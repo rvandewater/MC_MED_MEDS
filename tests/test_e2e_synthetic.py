@@ -32,6 +32,8 @@ def test_events(events: pl.DataFrame):
         "ED_DIAGNOSIS//ICD9CM//222.2",
         "HOSPITAL_ADMISSION//Medicine",
         "HOSPITAL_DISCHARGE//Home",
+        "HOSPITAL_DISCHARGE//Expired",
+        "MEDS_DEATH",
         "ORDER//Lab//P1",
         "MEDICATION_ADMINISTRATION//P2",
         "LAB//Analyte X//mmol/L",
@@ -133,3 +135,16 @@ def test_ed_diagnoses_have_no_dataset_description(codes: pl.DataFrame):
     dx = codes.filter(pl.col("code").str.starts_with("ED_DIAGNOSIS//"))
     assert not dx.is_empty()
     assert dx["description"].is_null().all()
+
+
+def test_in_hospital_deaths_are_meds_death(events: pl.DataFrame):
+    deaths = events.filter(pl.col("code") == "MEDS_DEATH")
+    times = dict(zip(deaths["csn"].to_list(), deaths["time"].to_list()))
+    assert sorted(deaths["subject_id"].to_list()) == [1, 3]
+    # At the reconstructed hospital discharge (arrival + 3 days), like HOSPITAL_DISCHARGE//Expired.
+    assert times[102] == datetime(2200, 1, 8, 18, 0)
+    discharge = events.filter(pl.col("code") == "HOSPITAL_DISCHARGE//Expired")
+    assert discharge["time"].to_list() == [times[102]]
+    # Without a Hosp_LOS there is no discharge event; the death falls back to ED departure.
+    assert times[301] == datetime(2300, 3, 1, 13, 0)
+    assert events.filter(pl.col("code") == "MEDS_BIRTH").is_empty()

@@ -12,6 +12,7 @@ The rows reproduce the quirks of the real files that the config has to handle:
 - several diagnosis codes in one ``Dx_ICD10`` / ``Dx_ICD9`` field (joined by ", ") and several
   chief complaints in one ``CC`` field (joined by "," or ", ");
 - whole-day ``Hosp_LOS``, including 0 for an admission whose ED departure is on the next day;
+- in-hospital deaths, recorded only as an "Expired" discharge disposition;
 - a visit without a departure time;
 - orders without a ``Procedure_ID``;
 - past-medical-history codes without the dot, labelled ``Dx10`` / ``Dx9``.
@@ -25,10 +26,11 @@ import pytest
 
 # Patients (MRN 1-4). MEDS-Extract needs >= 1 per train/tuning/held_out split.
 #   CSN 101: patient 1, discharged from the ED; blank payor; two complaints, two codes each.
-#   CSN 102: patient 1, admitted for 3 days.
+#   CSN 102: patient 1, admitted for 3 days; died in hospital.
 #   CSN 201: patient 2, admitted with Hosp_LOS 0 and an ED departure on the next day; blank race,
 #            acuity, admit service and diagnoses.
-#   CSN 301: patient 3, discharged; space-separated timestamps.
+#   CSN 301: patient 3, discharged from the ED with an "Expired" disposition but no Hosp_LOS;
+#            space-separated timestamps.
 #   CSN 401: patient 4, discharged; no departure time, no triage temperature.
 VISITS = """\
 MRN,CSN,Visit_no,Visits,Age,Gender,Race,Ethnicity,Means_of_arrival,Triage_Temp,Triage_HR,Triage_RR,\
@@ -39,13 +41,13 @@ Arrival_time,Roomed_time,Dispo_time,Admit_time,Departure_time
 Discharge,100.0,Inpatient,4.0,,Home,"",,"001.0, V01.1","A00.0, B00.1",Synthetic dx A,\
 2200-01-01T10:00:00Z,2200-01-01T10:30:00Z,2200-01-01T13:00:00Z,,2200-01-01T14:00:00Z
 1,102,2,2,40,F,Race A,Ethnicity A,EMS,38.5,110,22,93,100,60,2-Emergent,COMPLAINT B,Inpatient,,,\
-6.0,3,Home,Medicare,Medicine,222.2,B00.0,Synthetic dx B,2200-01-05T18:00:00Z,2200-01-05T18:10:00Z,\
+6.0,3,Expired,Medicare,Medicine,222.2,B00.0,Synthetic dx B,2200-01-05T18:00:00Z,2200-01-05T18:10:00Z,\
 2200-01-05T22:00:00Z,2200-01-05T22:30:00Z,2200-01-06T00:00:00Z
 2,201,1,1,65,M,"",Ethnicity B,Self,36.8,72,14,99,135,85,"",COMPLAINT C,Observation,,,7.0,0,Home,\
 Medicaid,"","","","",2250-06-01T20:00:00Z,2250-06-01T20:20:00Z,2250-06-02T01:00:00Z,\
 2250-06-02T01:30:00Z,2250-06-02T03:00:00Z
 3,301,1,1,30,M,Race C,Ethnicity A,Self,37.2,90,18,97,125,75,5-Non-Urgent,COMPLAINT D,Discharge,,,\
-1.0,,Home,"",,444.4,D00.0,Synthetic dx D,2300-03-01 12:00:00,2300-03-01 12:05:00,\
+1.0,,Expired,"",,444.4,D00.0,Synthetic dx D,2300-03-01 12:00:00,2300-03-01 12:05:00,\
 2300-03-01 12:45:00,,2300-03-01 13:00:00
 4,401,1,1,50,U,Race B,Ethnicity B,Other/Unknown,,85,18,97,130,80,4-Semi-Urgent,\
 "COMPLAINT A, COMPLAINT E",Discharge,,,,,Home,"",,555.5,E00.0,Synthetic dx E,2280-07-01T09:00:00Z,\
