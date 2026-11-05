@@ -1,10 +1,11 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools-scm>=8.0", "wheel"]
+requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "MC-MED-MEDS"
-dynamic = ["version"]
+# Bumped with `uv version --bump ...`; merging a new version into main publishes it (see CONTRIBUTORS.md).
+version = "0.1.0"
 authors = [
   { name="Robin van de Water", email="r.p.vandewater@gmail.com" },
 ]
@@ -33,8 +34,12 @@ dependencies = [
 dev = ["pre-commit<4"]
 tests = ["pytest"]
 
-[tool.setuptools_scm]
-fallback_version = "0.0.0"
+[tool.setuptools.package-data]
+# Ship the MESSY config and the suMEDS rules (the YAML files under the package) with the code.
+MC_MED_MEDS = ["**/*"]
+
+[tool.setuptools.exclude-package-data]
+MC_MED_MEDS = ["**/__pycache__/*", "**/*.pyc", "**/.DS_Store"]
 
 # Registers this dataset with MEDS-Extract's generic runner: after `pip install`,
 # `meds-extract-run spec=MC-MED output_dir=...` runs the whole ETL, and the

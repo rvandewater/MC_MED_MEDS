@@ -201,10 +201,13 @@ name, which is all `suMEDS-extract spec=MC-MED` needs to enrich the output.
 ## Development
 
 ```bash
-uv sync --group dev --group tests
+uv sync --all-groups
 uv run pre-commit install
 uv run pytest tests/ -v
 ```
+
+See [`CONTRIBUTORS.md`](CONTRIBUTORS.md) for the contribution guidelines, the checks, regenerating the
+summary-stats baseline, and releasing.
 
 The test suite validates offline that the packaged MESSY file is registered and parses, then runs
 the full pipeline end to end on a tiny, entirely synthetic dataset with MC-MED's documented column
@@ -213,11 +216,10 @@ checks that the packaged suMEDS rules match the codes it writes (`tests/test_sum
 that `suMEDS-extract spec=MC-MED` enriches them, offline against a tiny synthetic ontology pack
 (`tests/test_run_with_enrichment.py`). No real MC-MED data is used in CI.
 
-To publish: set up a [PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/) for this
-repository (see [the template's
-instructions](https://github.com/Medical-Event-Data-Standard/ETL_MEDS_Template#pypi) for a
-walkthrough), then push a version tag (e.g. `git tag 0.1.0 && git push origin 0.1.0`) — the release
-workflow builds, publishes to PyPI, and creates a GitHub release. Optionally archive releases on
+To release, bump `project.version` in `pyproject.toml` with `uv version --bump minor|patch|major` in a pull
+request and merge it into `main`. The publish workflow then uploads the new version to PyPI (through a
+[PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/)) and creates its tag and GitHub Release;
+see [`CONTRIBUTORS.md`](CONTRIBUTORS.md#releasing). Optionally archive releases on
 [Zenodo](https://docs.github.com/en/repositories/archiving-a-github-repository/referencing-and-citing-content)
 for a citable DOI, and update `CITATION.cff` accordingly.
 
