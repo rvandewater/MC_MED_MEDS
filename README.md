@@ -112,8 +112,8 @@ ETL. The package ships the rules for it,
 
 ```bash
 pip install "sumeds>=0.4"
-suMEDS-enrich $OUTPUT_DIR/metadata/codes.parquet -o codes_enriched.parquet \
-    --rules "$(python -c 'from importlib.resources import files; print(files("MC_MED_MEDS") / "sumeds_rules.yaml")')"
+RULES="$(python -c 'from importlib.resources import files; print(files("MC_MED_MEDS") / "sumeds_rules.yaml")')"
+suMEDS-enrich "$OUTPUT_DIR/metadata/codes.parquet" -o codes_enriched.parquet --rules "$RULES"
 ```
 
 The rules validate the `ED_DIAGNOSIS//ICD10CM//…`, `ED_DIAGNOSIS//ICD9CM//…`, `PMH//ICD10CM//…` and
