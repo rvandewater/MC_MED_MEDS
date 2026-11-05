@@ -105,28 +105,34 @@ TABLES = {
 
 
 @pytest.fixture(scope="session")
-def meds_output(tmp_path_factory) -> Path:
-    root = tmp_path_factory.mktemp("mc_med")
-    raw_dir = root / "raw"
-    raw_dir.mkdir()
+def raw_dir(tmp_path_factory) -> Path:
+    """The synthetic tables, written as the raw MC-MED CSVs."""
+    raw_dir = tmp_path_factory.mktemp("mc_med_raw")
     for name, content in TABLES.items():
         (raw_dir / f"{name}.csv").write_text(content)
+    return raw_dir
 
-    output_dir = root / "MEDS_cohort"
-    result = subprocess.run(
+
+def run_command(argv: list[str]) -> None:
+    """Run a CLI, failing the test with its full output if it does not succeed."""
+    result = subprocess.run(argv, capture_output=True, text=True)
+    assert result.returncode == 0, (
+        f"{argv[0]} failed with exit code {result.returncode}.\n"
+        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    )
+
+
+@pytest.fixture(scope="session")
+def meds_output(tmp_path_factory, raw_dir: Path) -> Path:
+    output_dir = tmp_path_factory.mktemp("mc_med") / "MEDS_cohort"
+    run_command(
         [
             "meds-extract-run",
             "spec=MC-MED",
             f"output_dir={output_dir}",
             "do_download=false",
             f"input_dir={raw_dir}",
-        ],
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, (
-        f"meds-extract-run failed with exit code {result.returncode}.\n"
-        f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+        ]
     )
     return output_dir
 
