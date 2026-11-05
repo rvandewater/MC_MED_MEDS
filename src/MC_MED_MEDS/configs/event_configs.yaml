@@ -45,8 +45,9 @@ sources:
   dataset:
     - type: physionet
       base_url: https://physionet.org/files/mc-med/${sources.dataset_version}
-      username: ${oc.env:PHYSIONET_USERNAME}
-      password: ${oc.env:PHYSIONET_PASSWORD}
+      # The variable names MEDS-DEV and the other MEDS ETLs use for download credentials.
+      username: ${oc.env:DATASET_DOWNLOAD_USERNAME}
+      password: ${oc.env:DATASET_DOWNLOAD_PASSWORD}
       # Only the tabular files this ETL reads — skips the (very large) WFDB waveform tree.
       include:
         - visits.csv

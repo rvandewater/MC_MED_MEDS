@@ -38,8 +38,8 @@ dataset: you need a credentialed PhysioNet account, the required CITI training, 
 for the project. Export your PhysioNet credentials before running the ETL:
 
 ```bash
-export PHYSIONET_USERNAME=...
-export PHYSIONET_PASSWORD=...
+export DATASET_DOWNLOAD_USERNAME=... # your PhysioNet username
+export DATASET_DOWNLOAD_PASSWORD=... # and password
 suMEDS-extract spec=MC-MED output_dir=/path/to/output download_dest_dir=/path/to/raw
 ```
 
