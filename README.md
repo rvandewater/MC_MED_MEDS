@@ -46,35 +46,55 @@ use `do_download=false input_dir=/path/to/mc-med/1.0.1`.
 obtain it, and every visit-scoped event carries its visit's `CSN` in an extra `csn` column (useful
 for linking back to the raw tables and the waveforms).
 
-| Source table   | Event(s)                           | Code pattern                                                                                          | Time                             | Value(s)                                     |
-| -------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------- | -------------------------------- | -------------------------------------------- |
-| `visits.csv`   | Demographics (static)              | `GENDER//…`, `RACE//…`, `ETHNICITY//…`                                                                | —                                |                                              |
-|                | Arrival, age, payor                | `ED_ARRIVAL//{Means_of_arrival}`, `AGE`, `PAYOR//{Payor_class}`                                       | `Arrival_time`                   | `AGE`: perturbed age (years)                 |
-|                | Triage                             | `TRIAGE//ESI//{acuity}`, `TRIAGE//CHIEF_COMPLAINT//{CC}`, `TRIAGE//{HR,RR,SPO2,SBP,DBP,TEMP}//{unit}` | `Arrival_time`                   | vitals as `numeric_value`                    |
-|                | ED course                          | `ED_ROOMED`, `ED_DISPOSITION//{ED_dispo}`, `HOSPITAL_ADMISSION//{Admit_service}`, `ED_DEPARTURE`      | respective timestamp             | `ED_DEPARTURE`: ED LOS (hours)               |
-|                | Primary ED diagnosis               | `ED_DIAGNOSIS//ICD10CM//{code}`, `ED_DIAGNOSIS//ICD9CM//{code}`                                       | `Departure_time`                 |                                              |
-|                | Hospital discharge                 | `HOSPITAL_DISCHARGE//{DC_dispo}`                                                                      | `Arrival_time + Hosp_LOS`        | Hospital LOS (days)                          |
-| `orders.csv`   | Orders; medication administrations | `ORDER//{Order_type}//{Procedure_ID}`, `MEDICATION_ADMINISTRATION//{Procedure_ID}`                    | `Order_time`, `First_admin_time` |                                              |
-| `labs.csv`     | Lab component results              | `LAB//{Component_name}//{Component_units}`                                                            | `Result_time`                    | `numeric_value` (parsed), `text_value` (raw) |
-| `rads.csv`     | Radiology reports                  | `RADIOLOGY//{Study}`                                                                                  | `Result_time`                    | `text_value`: impression                     |
-| `numerics.csv` | Charted / monitor vitals           | `VITAL//{Measure}//{Chart,Monitor}`                                                                   | `Time`                           | `numeric_value`                              |
-| `pmh.csv`      | Past medical history               | `PMH//{CodeType}//{Code}`                                                                             | `Noted_date`                     |                                              |
-| `meds.csv`     | Home medication list               | `HOME_MEDICATION//{Med_ID}`, `HOME_MEDICATION_END//{Med_ID}`                                          | `Entry_date`, `End_date`         |                                              |
+| Source table   | Event(s)                           | Code pattern                                                                                                   | Time                                                 | Value(s)                                     |
+| -------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------- |
+| `visits.csv`   | Demographics (static)              | `GENDER//…`, `RACE//…`, `ETHNICITY//…`                                                                         | —                                                    |                                              |
+|                | Arrival, age, payor                | `ED_ARRIVAL//{Means_of_arrival}`, `AGE`, `PAYOR//{Payor_class}`                                                | `Arrival_time`                                       | `AGE`: perturbed age (years)                 |
+|                | Triage                             | `TRIAGE//ESI//{acuity}`, `TRIAGE//CHIEF_COMPLAINT//{complaint}`, `TRIAGE//{HR,RR,SPO2,SBP,DBP,TEMP}//{unit}`   | `Arrival_time`                                       | vitals as `numeric_value`                    |
+|                | ED course                          | `ED_ROOMED`, `ED_DISPOSITION//{ED_dispo}`, `HOSPITAL_ADMISSION//{Admit_service}`, `ED_DEPARTURE`               | respective timestamp                                 | `ED_DEPARTURE`: ED LOS (hours)               |
+|                | ED diagnoses                       | `ED_DIAGNOSIS//ICD10CM//{code}`, `ED_DIAGNOSIS//ICD9CM//{code}` (dotted)                                       | `Departure_time` (else `Dispo_time`)                 | first ICD-10 code: `text_value` = `Dx_name`  |
+|                | Hospital discharge                 | `HOSPITAL_DISCHARGE//{DC_dispo}` (admitted visits only)                                                        | `Arrival_time + Hosp_LOS`, no earlier than departure | Hospital LOS (days)                          |
+| `orders.csv`   | Orders; medication administrations | `ORDER//{Order_type}//{Procedure_ID}`, `MEDICATION_ADMINISTRATION//{Procedure_ID}` (`Procedure_name` if no ID) | `Order_time`, `First_admin_time`                     |                                              |
+| `labs.csv`     | Lab component results              | `LAB//{Component_name}//{Component_units}`                                                                     | `Result_time`                                        | `numeric_value` (parsed), `text_value` (raw) |
+| `rads.csv`     | Radiology reports                  | `RADIOLOGY//{Study}`                                                                                           | `Result_time`                                        | `text_value`: impression                     |
+| `numerics.csv` | Charted / monitor vitals           | `VITAL//{Measure}//{Chart,Monitor}`                                                                            | `Time`                                               | `numeric_value`                              |
+| `pmh.csv`      | Past medical history               | `PMH//ICD10CM//{code}`, `PMH//ICD9CM//{code}` (dotted)                                                         | `Noted_date`                                         |                                              |
+| `meds.csv`     | Home medication list               | `HOME_MEDICATION//{Med_ID}`, `HOME_MEDICATION_END//{Med_ID}`                                                   | `Entry_date`, `End_date`                             |                                              |
 
-Code descriptions (ICD-10 names, order names, medication names, PMH descriptions) are written to
-`metadata/codes.parquet`. A missing unit, arrival mode, order type, admit service or discharge
-disposition becomes `UNK` rather than dropping the row.
+Code descriptions (order names, medication names, PMH descriptions) are written to
+`metadata/codes.parquet`; official ICD titles and parents come from suMEDS (see
+[below](#enriching-code-metadata-with-sumeds)). A missing value in a categorical code component
+(race, ethnicity, arrival mode, payor, acuity, order type, unit, admit service, dispositions)
+becomes `UNK` rather than dropping the row. The CSVs write these as quoted empty strings (`""`),
+which the config treats the same as null.
 
 ### Modelling choices and caveats
 
 - **Timestamps** are shifted per patient into 2150–2350 by the dataset authors. They are parsed
   leniently against several ISO-8601 layouts. Rows matching none are dropped, and MEDS-Extract logs
-  a WARNING with the count, so check the logs of your first full run.
+  a WARNING with the count, so check the logs of your first full run. These per-event warnings are
+  in `$OUTPUT_DIR/convert_to_MEDS_events/.logs/`, not in the runner's own output. In v1.0.1 every
+  timestamp matches the first layout, so every dropped row is one whose time is missing.
 - **Triage** has no timestamp of its own and is placed at ED arrival.
 - **Age** is perturbed (±2 years, clipped to 18–90) and there is no birth date, so it is an `AGE`
   measurement at each arrival rather than a `MEDS_BIRTH` event.
+- **Several values in one field.** `Dx_ICD10` and `Dx_ICD9` can hold up to 4 codes (joined by
+  `", "`), and `CC` up to 8 chief complaints (joined by `","` or `", "`). Each value becomes its own
+  event. MEDS-Extract cannot turn one row into a variable number of events, so the config has fixed
+  slots (`ed_diagnosis_icd10_1` … `_4`, `triage_chief_complaint_1` … `_8`). Empty slots produce a
+  null code and are dropped; the per-event WARNINGs count those as "with null code", which is
+  expected. A field with more values than slots would lose the extra ones; MC-MED v1.0.1 has none.
+- **ED diagnosis names.** `Dx_name` is the EHR's own name for the visit's diagnosis and varies for
+  one ICD-10 code, so it is the `text_value` of the visit's first ICD-10 event rather than a code
+  description.
+- **Past medical history** codes are written without the dot in `pmh.csv` (`CodeType` `Dx10` /
+  `Dx9`). The ETL restores the dot (after the 3rd character, or the 4th for ICD-9 E codes), so past
+  and ED diagnoses share one layout, e.g. `E119` → `PMH//ICD10CM//E11.9`.
 - **Hospital discharge** has no timestamp in MC-MED. It is reconstructed as
   `Arrival_time + Hosp_LOS` days, assuming `Hosp_LOS` covers the whole encounter, ED stay included.
+  `Hosp_LOS` is a whole number of days (0 for about 4% of admissions), so the time is clamped to no
+  earlier than ED departure. It is still only accurate to about a day: in-stay vitals, labs or
+  orders can occur after it.
 - **Home medications** are placed at `Entry_date` (when they were recorded), not `Start_date`, so
   they never appear before the information was available.
 - **Not extracted:** waveforms and `waveform_summary.csv`, the next-visit outcome columns
@@ -83,6 +103,25 @@ disposition becomes `UNK` rather than dropping the row.
 - **Splits:** MEDS-Extract draws its own random subject-level splits. To use MC-MED's provided
   `split_random_*` / `split_chrono_*` files instead, convert them to a `{split: [subject_ids]}`
   JSON and pass it via `external_splits_json_fp`.
+
+### Enriching code metadata with suMEDS
+
+ICD vocabulary work lives in [suMEDS](https://github.com/rvandewater/SumMEDS) rather than in this
+ETL. The package ships the rules for it,
+[`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml):
+
+```bash
+pip install "sumeds>=0.4"
+RULES="$(python -c 'from importlib.resources import files; print(files("MC_MED_MEDS") / "sumeds_rules.yaml")')"
+suMEDS-enrich "$OUTPUT_DIR/metadata/codes.parquet" -o codes_enriched.parquet --rules "$RULES"
+```
+
+The rules validate the `ED_DIAGNOSIS//ICD10CM//…`, `ED_DIAGNOSIS//ICD9CM//…`, `PMH//ICD10CM//…` and
+`PMH//ICD9CM//…` codes against suMEDS's versioned ICD-10-CM and ICD-9-CM data (built from the
+CDC/NCHS and CMS files). They add the official title where a code has none, the vocabulary
+ancestors as `parent_codes`, and the nearest ancestor that is itself a code of the same family
+(ED diagnoses and past medical history are linked separately). The same rules work with
+`suMEDS … --rules …` to build a privacy-masked code catalog of the output.
 
 ## How this package works
 
@@ -106,7 +145,9 @@ uv run pytest tests/ -v
 
 The test suite validates offline that the packaged MESSY file is registered and parses, then runs
 the full pipeline end to end on a tiny, entirely synthetic dataset with MC-MED's documented column
-layout (`tests/test_e2e_synthetic.py`). No real MC-MED data is used in CI.
+layout and the quirks of the real files (`tests/conftest.py`, `tests/test_e2e_synthetic.py`), and
+checks that the packaged suMEDS rules match the codes it writes (`tests/test_sumeds_rules.py`). No
+real MC-MED data is used in CI.
 
 To publish: set up a [PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/) for this
 repository (see [the template's

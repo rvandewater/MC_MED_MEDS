@@ -27,7 +27,8 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pre-commit<4"]
-tests = ["pytest"]
+# tests/test_sumeds_rules.py loads the packaged rules with suMEDS itself.
+tests = ["pytest", "sumeds>=0.4"]
 
 [tool.setuptools_scm]
 fallback_version = "0.0.0"
