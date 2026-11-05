@@ -28,7 +28,9 @@
 #     extracted by position with a regex; empty slots give a null code and are dropped (the
 #     per-event WARNING then counts them as "with null code").
 #   * `Age` is perturbed (±2 years, clipped to [18, 90]); no birth date exists, so age is emitted
-#     as a numeric `AGE` event at each ED arrival rather than as `MEDS_BIRTH`.
+#     as a numeric `AGE` event at each ED arrival and there is no `MEDS_BIRTH`.
+#   * `MEDS_DEATH` marks in-hospital deaths only (hospital discharge disposition "Expired…"); no
+#     death registry is linked, so a subject without `MEDS_DEATH` is not known to be alive.
 #   * Every visit-scoped event carries the visit's `CSN` in an extra `csn` column, so MEDS events can
 #     be linked back to the raw tables and to the WFDB waveforms (`waveforms/{CSN[-3:]}/{CSN}/`).
 #   * Not extracted: the waveform records themselves (WFDB signal files, not tabular events),
@@ -230,6 +232,22 @@ visits:
       if $Hosp_LOS::?float64 >= 0
       else coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f") + ($Hosp_LOS::?float64 * 86400)::?int64::seconds
     numeric_value: $Hosp_LOS::?float64
+    csn: $CSN
+
+  death:
+    # In-hospital death: a DC_dispo starting with "Expired" (MC-MED has no other death source, so
+    # deaths after discharge are not captured). Placed at the hospital-discharge time above. A
+    # death visit without a Hosp_LOS falls back to ED departure (`max` skips the null), and one
+    # without a departure time either to the disposition decision.
+    code: '"MEDS_DEATH" if (/^Expired/ in $DC_dispo)'
+    time: >-
+      coalesce(
+      max(
+      coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f"),
+      coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f") + ($Hosp_LOS::?float64 * 86400)::?int64::seconds
+      ),
+      coalesce($Dispo_time::?"%Y-%m-%dT%H:%M:%SZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S%.f")
+      )
     csn: $CSN
 
 # ------------------------------------------------------------------------------------------------

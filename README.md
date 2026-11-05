@@ -61,6 +61,7 @@ for linking back to the raw tables and the waveforms).
 |                | ED course                          | `ED_ROOMED`, `ED_DISPOSITION//{ED_dispo}`, `HOSPITAL_ADMISSION//{Admit_service}`, `ED_DEPARTURE`               | respective timestamp                                 | `ED_DEPARTURE`: ED LOS (hours)               |
 |                | ED diagnoses                       | `ED_DIAGNOSIS//ICD10CM//{code}`, `ED_DIAGNOSIS//ICD9CM//{code}` (dotted)                                       | `Departure_time` (else `Dispo_time`)                 | first ICD-10 code: `text_value` = `Dx_name`  |
 |                | Hospital discharge                 | `HOSPITAL_DISCHARGE//{DC_dispo}` (admitted visits only)                                                        | `Arrival_time + Hosp_LOS`, no earlier than departure | Hospital LOS (days)                          |
+|                | In-hospital death                  | `MEDS_DEATH` (`DC_dispo` starting with `Expired`)                                                              | as hospital discharge (else ED departure)            |                                              |
 | `orders.csv`   | Orders; medication administrations | `ORDER//{Order_type}//{Procedure_ID}`, `MEDICATION_ADMINISTRATION//{Procedure_ID}` (`Procedure_name` if no ID) | `Order_time`, `First_admin_time`                     |                                              |
 | `labs.csv`     | Lab component results              | `LAB//{Component_name}//{Component_units}`                                                                     | `Result_time`                                        | `numeric_value` (parsed), `text_value` (raw) |
 | `rads.csv`     | Radiology reports                  | `RADIOLOGY//{Study}`                                                                                           | `Result_time`                                        | `text_value`: impression                     |
@@ -84,7 +85,15 @@ which the config treats the same as null.
   timestamp matches the first layout, so every dropped row is one whose time is missing.
 - **Triage** has no timestamp of its own and is placed at ED arrival.
 - **Age** is perturbed (±2 years, clipped to 18–90) and there is no birth date, so it is an `AGE`
-  measurement at each arrival rather than a `MEDS_BIRTH` event.
+  measurement at each arrival, and there is no `MEDS_BIRTH`.
+- **Deaths** are in-hospital only. MC-MED records a death as a hospital discharge disposition
+  starting with `Expired`, and no death registry is linked, so deaths after discharge are not
+  captured and a subject without `MEDS_DEATH` is not known to be alive. `MEDS_DEATH` is placed at
+  the reconstructed hospital discharge time (see below), or at ED departure for the few death
+  visits without a `Hosp_LOS`. `MEDS_DEATH` is not always a subject's last event: like the
+  discharge time, it is only accurate to about a day, so some in-stay vitals, labs or orders come
+  after it (typically a few hours), and the source data has a few patients with a later ED visit or
+  a past-medical-history or home-medication entry dated after their death.
 - **Several values in one field.** `Dx_ICD10` and `Dx_ICD9` can hold up to 4 codes (joined by
   `", "`), and `CC` up to 8 chief complaints (joined by `","` or `", "`). Each value becomes its own
   event. MEDS-Extract cannot turn one row into a variable number of events, so the config has fixed
