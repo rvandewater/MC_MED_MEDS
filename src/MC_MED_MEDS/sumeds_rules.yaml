@@ -1,0 +1,49 @@
+# suMEDS enrichment rules for MC-MED-MEDS code metadata (format `sumeds-rules/0.1`, read by
+# suMEDS >= 0.4; https://github.com/rvandewater/SumMEDS).
+#
+# The ETL writes ED and past-medical-history diagnoses as dotted ICD-10-CM / ICD-9-CM codes, but
+# no official titles or parents (MC-MED's own `Dx_name` varies for one code, so it is kept as an
+# event text_value instead). suMEDS validates these codes against its versioned ICD-10-CM and
+# ICD-9-CM data (sumeds-ontologies, pinned release, built from the CDC/NCHS and CMS files), adds
+# the official title where the code has none, and the vocabulary ancestors as `parent_codes`:
+#
+#   suMEDS-enrich $MEDS_OUTPUT_DIR/metadata/codes.parquet -o codes_enriched.parquet \
+#     --rules "$(python -c 'from importlib.resources import files; print(files("MC_MED_MEDS") / "sumeds_rules.yaml")')"
+#
+# Every pattern matches a code layout of `configs/event_configs.yaml` exactly, so `UNK` and
+# malformed codes match nothing; tests/test_sumeds_rules.py checks them against the codes the ETL
+# writes for the synthetic test data.
+schema: sumeds-rules/0.1
+
+ontology:
+  # ED_DIAGNOSIS//ICD10CM//{Dx_ICD10 item}: dotted ICD-10-CM, as visits.csv writes it.
+  - id: mcmed-ed-icd10cm
+    pattern: '^ED_DIAGNOSIS//ICD10CM//(?P<code>[A-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)$'
+    vocabulary: ICD10CM
+    validate: pack
+  # ED_DIAGNOSIS//ICD9CM//{Dx_ICD9 item}: dotted ICD-9-CM (numeric, V and E codes).
+  - id: mcmed-ed-icd9cm
+    pattern: '^ED_DIAGNOSIS//ICD9CM//(?P<code>(?:[0-9]{3}|V[0-9]{2})(?:\.[0-9]{1,2})?|E[0-9]{3}(?:\.[0-9])?)$'
+    vocabulary: ICD9CM
+    validate: pack
+  # PMH//ICD10CM//{Code}: pmh.csv's undotted `Dx10` codes, dotted by the ETL.
+  - id: mcmed-pmh-icd10cm
+    pattern: '^PMH//ICD10CM//(?P<code>[A-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)$'
+    vocabulary: ICD10CM
+    validate: pack
+  # PMH//ICD9CM//{Code}: pmh.csv's undotted `Dx9` codes, dotted by the ETL.
+  - id: mcmed-pmh-icd9cm
+    pattern: '^PMH//ICD9CM//(?P<code>(?:[0-9]{3}|V[0-9]{2})(?:\.[0-9]{1,2})?|E[0-9]{3}(?:\.[0-9])?)$'
+    vocabulary: ICD9CM
+    validate: pack
+
+hierarchy:
+  # Same-dataset parents: the nearest ICD ancestor that is itself a code of the same family, e.g.
+  # ED_DIAGNOSIS//ICD10CM//I50.2 for ED_DIAGNOSIS//ICD10CM//I50.23. One rule per family, so an ED
+  # diagnosis never gets a PMH code as parent or the other way round.
+  - id: mcmed-ed-diagnosis-parents
+    from_ontology: true
+    rules: [mcmed-ed-icd10cm, mcmed-ed-icd9cm]
+  - id: mcmed-pmh-parents
+    from_ontology: true
+    rules: [mcmed-pmh-icd10cm, mcmed-pmh-icd9cm]

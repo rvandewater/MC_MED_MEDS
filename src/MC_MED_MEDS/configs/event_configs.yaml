@@ -18,6 +18,15 @@
 #     ISO-8601 strings; every time below is parsed leniently against several ISO layouts
 #     (`T`/space separator, optional fractional seconds, optional trailing `Z`, date-only), and
 #     rows matching none are dropped with a logged WARNING count.
+#   * Missing categorical values are written in the CSVs as quoted empty strings (`""`), which are
+#     read as empty text, not null, so `??` alone would not catch them. Every categorical code
+#     component therefore uses `$X if len_chars($X) > 0 else 'UNK'`, which maps both null and
+#     `""` to `UNK`.
+#   * `Dx_ICD10`, `Dx_ICD9` and `CC` can hold several values in one field (up to 4 diagnosis
+#     codes joined by ", "; up to 8 chief complaints joined by ","). MEDS-Extract cannot turn one
+#     row into a variable number of events, so each value gets its own fixed slot (`_1`, `_2`, …),
+#     extracted by position with a regex; empty slots give a null code and are dropped (the
+#     per-event WARNING then counts them as "with null code").
 #   * `Age` is perturbed (±2 years, clipped to [18, 90]); no birth date exists, so age is emitted
 #     as a numeric `AGE` event at each ED arrival rather than as `MEDS_BIRTH`.
 #   * Every visit-scoped event carries the visit's `CSN` in an extra `csn` column, so MEDS events can
@@ -26,6 +35,8 @@
 #     `waveform_summary.csv`, the next-visit outcome columns of `visits.csv`
 #     (`Hours_to_next_visit`, `Dispo_class_next_visit` — recoverable from the next visit's own
 #     events), and the provided `split_*.csv` files (see README for using them).
+#   * Vocabulary descriptions and parents for the ICD codes come from suMEDS, using the rules in
+#     `src/MC_MED_MEDS/sumeds_rules.yaml` (see README).
 
 sources:
   dataset_version: "1.0.1"
@@ -52,17 +63,17 @@ _defaults:
 # ------------------------------------------------------------------------------------------------
 visits:
   gender:
-    code: 'f"GENDER//{$Gender}"'
+    code: 'f"GENDER//{$Gender if len_chars($Gender) > 0 else ''UNK''}"'
     time: null
   race:
-    code: 'f"RACE//{$Race}"'
+    code: 'f"RACE//{$Race if len_chars($Race) > 0 else ''UNK''}"'
     time: null
   ethnicity:
-    code: 'f"ETHNICITY//{$Ethnicity}"'
+    code: 'f"ETHNICITY//{$Ethnicity if len_chars($Ethnicity) > 0 else ''UNK''}"'
     time: null
 
   ed_arrival:
-    code: 'f"ED_ARRIVAL//{$Means_of_arrival ?? ''UNK''}"'
+    code: 'f"ED_ARRIVAL//{$Means_of_arrival if len_chars($Means_of_arrival) > 0 else ''UNK''}"'
     time: &arrival_time 'coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f")'
     csn: $CSN
   age:
@@ -71,17 +82,47 @@ visits:
     numeric_value: $Age::?float64
     csn: $CSN
   payor:
-    code: 'f"PAYOR//{$Payor_class}"'
+    # MC-MED records only Medicare and Medicaid; the ~60% of visits with neither are `PAYOR//UNK`.
+    code: 'f"PAYOR//{$Payor_class if len_chars($Payor_class) > 0 else ''UNK''}"'
     time: *arrival_time
     csn: $CSN
 
   # Triage. MC-MED gives no separate triage timestamp, so triage is placed at ED arrival.
   triage_acuity:
-    code: 'f"TRIAGE//ESI//{$Triage_acuity}"'
+    code: 'f"TRIAGE//ESI//{$Triage_acuity if len_chars($Triage_acuity) > 0 else ''UNK''}"'
     time: *arrival_time
     csn: $CSN
-  triage_chief_complaint:
-    code: 'f"TRIAGE//CHIEF_COMPLAINT//{$CC}"'
+  # Chief complaints: one event per complaint (CC holds up to 8, joined by "," or ", ").
+  triage_chief_complaint_1:
+    code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^ *([^,]*[^, ])/ from $CC)'
+    time: *arrival_time
+    csn: $CSN
+  triage_chief_complaint_2:
+    code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $CC)'
+    time: *arrival_time
+    csn: $CSN
+  triage_chief_complaint_3:
+    code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){2} *([^,]*[^, ])/ from $CC)'
+    time: *arrival_time
+    csn: $CSN
+  triage_chief_complaint_4:
+    code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){3} *([^,]*[^, ])/ from $CC)'
+    time: *arrival_time
+    csn: $CSN
+  triage_chief_complaint_5:
+    code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){4} *([^,]*[^, ])/ from $CC)'
+    time: *arrival_time
+    csn: $CSN
+  triage_chief_complaint_6:
+    code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){5} *([^,]*[^, ])/ from $CC)'
+    time: *arrival_time
+    csn: $CSN
+  triage_chief_complaint_7:
+    code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){6} *([^,]*[^, ])/ from $CC)'
+    time: *arrival_time
+    csn: $CSN
+  triage_chief_complaint_8:
+    code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){7} *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
     csn: $CSN
   triage_temp:
@@ -120,44 +161,81 @@ visits:
     time: 'coalesce($Roomed_time::?"%Y-%m-%dT%H:%M:%SZ", $Roomed_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Roomed_time::?"%Y-%m-%dT%H:%M:%S", $Roomed_time::?"%Y-%m-%d %H:%M:%S", $Roomed_time::?"%Y-%m-%d %H:%M:%S%.f")'
     csn: $CSN
   ed_disposition:
-    code: 'f"ED_DISPOSITION//{$ED_dispo}"'
+    code: 'f"ED_DISPOSITION//{$ED_dispo if len_chars($ED_dispo) > 0 else ''UNK''}"'
     time: 'coalesce($Dispo_time::?"%Y-%m-%dT%H:%M:%SZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S%.f")'
     csn: $CSN
   hospital_admission:
     # Only admitted visits have an Admit_time; all others drop (logged) here.
-    code: 'f"HOSPITAL_ADMISSION//{$Admit_service ?? ''UNK''}"'
+    code: 'f"HOSPITAL_ADMISSION//{$Admit_service if len_chars($Admit_service) > 0 else ''UNK''}"'
     time: 'coalesce($Admit_time::?"%Y-%m-%dT%H:%M:%SZ", $Admit_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Admit_time::?"%Y-%m-%dT%H:%M:%S", $Admit_time::?"%Y-%m-%d %H:%M:%S", $Admit_time::?"%Y-%m-%d %H:%M:%S%.f")'
     csn: $CSN
   ed_departure:
     # numeric_value: ED length of stay in hours.
     code: ED_DEPARTURE
-    time: &departure_time 'coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    time: 'coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f")'
     numeric_value: $ED_LOS::?float64
     csn: $CSN
 
-  # Primary ED diagnosis, recorded at ED departure.
-  ed_diagnosis_icd10:
-    code: 'f"ED_DIAGNOSIS//ICD10CM//{$Dx_ICD10}"'
-    time: *departure_time
+  # ED diagnoses, recorded at ED departure (at the disposition decision for the ~0.2% of visits
+  # without a departure time). One event per code: Dx_ICD10 / Dx_ICD9 hold up to 4, joined by ", ".
+  # Dx_name is the EHR's own name for the visit's diagnosis and varies for one ICD-10 code, so it
+  # is kept as the first ICD-10 event's text_value rather than as a code description; the
+  # official ICD titles come from suMEDS.
+  ed_diagnosis_icd10_1:
+    code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^ *([^,]*[^, ])/ from $Dx_ICD10)'
+    time: &diagnosis_time 'coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f", $Dispo_time::?"%Y-%m-%dT%H:%M:%SZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    text_value: $Dx_name if len_chars($Dx_name) > 0
     csn: $CSN
-    _metadata:
-      _self:
-        description: $Dx_name
-  ed_diagnosis_icd9:
-    code: 'f"ED_DIAGNOSIS//ICD9CM//{$Dx_ICD9}"'
-    time: *departure_time
+  ed_diagnosis_icd10_2:
+    code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $Dx_ICD10)'
+    time: *diagnosis_time
+    csn: $CSN
+  ed_diagnosis_icd10_3:
+    code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^(?:[^,]*,){2} *([^,]*[^, ])/ from $Dx_ICD10)'
+    time: *diagnosis_time
+    csn: $CSN
+  ed_diagnosis_icd10_4:
+    code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^(?:[^,]*,){3} *([^,]*[^, ])/ from $Dx_ICD10)'
+    time: *diagnosis_time
+    csn: $CSN
+  ed_diagnosis_icd9_1:
+    code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^ *([^,]*[^, ])/ from $Dx_ICD9)'
+    time: *diagnosis_time
+    csn: $CSN
+  ed_diagnosis_icd9_2:
+    code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $Dx_ICD9)'
+    time: *diagnosis_time
+    csn: $CSN
+  ed_diagnosis_icd9_3:
+    code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^(?:[^,]*,){2} *([^,]*[^, ])/ from $Dx_ICD9)'
+    time: *diagnosis_time
+    csn: $CSN
+  ed_diagnosis_icd9_4:
+    code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^(?:[^,]*,){3} *([^,]*[^, ])/ from $Dx_ICD9)'
+    time: *diagnosis_time
     csn: $CSN
 
   hospital_discharge:
-    # MC-MED has no discharge timestamp; it is reconstructed as Arrival_time + Hosp_LOS (days),
-    # since Hosp_LOS spans the whole encounter including the ED stay. numeric_value: Hosp_LOS.
-    code: 'f"HOSPITAL_DISCHARGE//{$DC_dispo ?? ''UNK''}"'
-    time: 'coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f") + ($Hosp_LOS::?float64 * 86400)::?int64::seconds'
+    # MC-MED has no discharge timestamp; it is reconstructed as Arrival_time + Hosp_LOS days, since
+    # Hosp_LOS spans the whole encounter including the ED stay. Hosp_LOS is a whole number of days
+    # (0 for ~4% of admissions), so the result is clamped to no earlier than ED departure. Only
+    # admitted visits have a Hosp_LOS: without one, both branches are null and the row drops
+    # (`max` alone would skip the null and fall back to departure). numeric_value: Hosp_LOS.
+    code: 'f"HOSPITAL_DISCHARGE//{$DC_dispo if len_chars($DC_dispo) > 0 else ''UNK''}"'
+    time: >-
+      max(
+      coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f"),
+      coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f") + ($Hosp_LOS::?float64 * 86400)::?int64::seconds
+      )
+      if $Hosp_LOS::?float64 >= 0
+      else coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f") + ($Hosp_LOS::?float64 * 86400)::?int64::seconds
     numeric_value: $Hosp_LOS::?float64
     csn: $CSN
 
 # ------------------------------------------------------------------------------------------------
 # orders.csv — every order placed during the visit (CSN only → join visits for MRN).
+# About 1% of orders (mostly medications) have an empty Procedure_ID; their Procedure_name is then
+# the only identifier (those names never occur with an ID), so it takes the ID's place in the code.
 # ------------------------------------------------------------------------------------------------
 orders:
   _table:
@@ -166,7 +244,7 @@ orders:
         key: CSN
         cols: [MRN]
   order:
-    code: 'f"ORDER//{$Order_type ?? ''UNK''}//{$Procedure_ID}"'
+    code: 'f"ORDER//{$Order_type if len_chars($Order_type) > 0 else ''UNK''}//{$Procedure_ID if len_chars($Procedure_ID) > 0 else $Procedure_name}"'
     time: 'coalesce($Order_time::?"%Y-%m-%dT%H:%M:%SZ", $Order_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Order_time::?"%Y-%m-%dT%H:%M:%S", $Order_time::?"%Y-%m-%d %H:%M:%S", $Order_time::?"%Y-%m-%d %H:%M:%S%.f")'
     csn: $CSN
     _metadata:
@@ -174,7 +252,7 @@ orders:
         description: $Procedure_name
   medication_administration:
     # Medication orders only: first administration time (null for all other order types → dropped).
-    code: 'f"MEDICATION_ADMINISTRATION//{$Procedure_ID}"'
+    code: 'f"MEDICATION_ADMINISTRATION//{$Procedure_ID if len_chars($Procedure_ID) > 0 else $Procedure_name}"'
     time: 'coalesce($First_admin_time::?"%Y-%m-%dT%H:%M:%SZ", $First_admin_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $First_admin_time::?"%Y-%m-%dT%H:%M:%S", $First_admin_time::?"%Y-%m-%d %H:%M:%S", $First_admin_time::?"%Y-%m-%d %H:%M:%S%.f")'
     csn: $CSN
     _metadata:
@@ -193,7 +271,7 @@ labs:
   lab:
     # numeric_value is the parsed Component_value (null for non-numeric results); text_value keeps
     # the raw Component_result (e.g. "Positive", "<0.5") for every row.
-    code: 'f"LAB//{$Component_name}//{$Component_units ?? ''UNK''}"'
+    code: 'f"LAB//{$Component_name}//{$Component_units if len_chars($Component_units) > 0 else ''UNK''}"'
     time: 'coalesce($Result_time::?"%Y-%m-%dT%H:%M:%SZ", $Result_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Result_time::?"%Y-%m-%dT%H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S%.f")'
     numeric_value: $Component_value::?float64
     text_value: $Component_result
@@ -232,15 +310,31 @@ numerics:
     csn: $CSN
 
 # ------------------------------------------------------------------------------------------------
-# pmh.csv — past medical history diagnoses (MRN).
+# pmh.csv — past medical history diagnoses (MRN). pmh.csv writes ICD codes without the dot and
+# labels them `Dx10` / `Dx9`; the dot is restored (after the 3rd character, or the 4th for ICD-9
+# E codes) so past and ED diagnoses share one layout: Dx10 `E119` -> `PMH//ICD10CM//E11.9`.
 # ------------------------------------------------------------------------------------------------
 pmh:
-  past_medical_history:
-    code: 'f"PMH//{$CodeType}//{$Code}"'
-    time: 'coalesce($Noted_date::?"%Y-%m-%d", $Noted_date::?"%Y-%m-%dT%H:%M:%SZ", $Noted_date::?"%Y-%m-%dT%H:%M:%S%.fZ", $Noted_date::?"%Y-%m-%dT%H:%M:%S", $Noted_date::?"%Y-%m-%d %H:%M:%S")'
+  past_medical_history_icd10:
+    code: >-
+      ("PMH//ICD10CM//" + $Code[:3] + ("." + $Code[3:] if len_chars($Code) > 3 else ""))
+      if $CodeType == "Dx10"
+    time: &noted_time 'coalesce($Noted_date::?"%Y-%m-%d", $Noted_date::?"%Y-%m-%dT%H:%M:%SZ", $Noted_date::?"%Y-%m-%dT%H:%M:%S%.fZ", $Noted_date::?"%Y-%m-%dT%H:%M:%S", $Noted_date::?"%Y-%m-%d %H:%M:%S")'
     _metadata:
       _self:
-        description: $Desc10
+        description: $Desc10 if len_chars($Desc10) > 0
+  past_medical_history_icd9:
+    code: >-
+      ("PMH//ICD9CM//" + (
+      ($Code[:4] + ("." + $Code[4:] if len_chars($Code) > 4 else ""))
+      if $Code[:1] == "E"
+      else ($Code[:3] + ("." + $Code[3:] if len_chars($Code) > 3 else ""))
+      ))
+      if $CodeType == "Dx9"
+    time: *noted_time
+    _metadata:
+      _self:
+        description: $Desc10 if len_chars($Desc10) > 0
 
 # ------------------------------------------------------------------------------------------------
 # meds.csv — home medication list (MRN). Placed at Entry_date (when the medication was recorded),
