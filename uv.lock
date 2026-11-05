@@ -245,6 +245,7 @@ name = "mc-med-meds"
 source = { editable = "." }
 dependencies = [
     { name = "meds-extract", extra = ["download"] },
+    { name = "sumeds" },
 ]
 
 [package.dev-dependencies]
@@ -253,18 +254,17 @@ dev = [
 ]
 tests = [
     { name = "pytest" },
-    { name = "sumeds" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "meds-extract", extras = ["download"], specifier = ">=0.8.0,<0.9" }]
+requires-dist = [
+    { name = "meds-extract", extras = ["download"], specifier = ">=0.8.0,<0.9" },
+    { name = "sumeds", specifier = ">=0.5,<0.6" },
+]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pre-commit", specifier = "<4" }]
-tests = [
-    { name = "pytest" },
-    { name = "sumeds", specifier = ">=0.4" },
-]
+tests = [{ name = "pytest" }]
 
 [[package]]
 name = "meds"
@@ -776,7 +776,7 @@ wheels = [
 
 [[package]]
 name = "sumeds"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "meds" },
@@ -785,9 +785,9 @@ dependencies = [
     { name = "pyyaml" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/75/19/19910cadc5b6e6b2ea281d887a5ed00ec2bfd9119a20dbfbeb75849392d1/sumeds-0.4.0.tar.gz", hash = "sha256:697e476d1c5bdc432a2f6cf9090de41082f3aff0a35c4210cd7c0f5a829dbc78", size = 43188, upload-time = "2026-11-02T22:09:06.99Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f6/d3/2c8b321311aa9b1f34dc63bdbb3fd6501d46952aa79224eeb70af5c0010c/sumeds-0.5.0.tar.gz", hash = "sha256:bcbb4ecd6f8ddcdbbe87ccd64467d0932bee6c7198c877c20299358c0ad3b1d2", size = 46711, upload-time = "2026-11-05T20:08:22.219Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/4f/c55cf7b3a074cd39df391eaec314de51b2432f3c9584e682ce8fdc60bf71/sumeds-0.4.0-py3-none-any.whl", hash = "sha256:8b18652754a3dfb637052c30500bcf740be97bd7b4dc4d618a26212c56605f22", size = 47748, upload-time = "2026-11-02T22:09:05.465Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/4e/66e00f7b79350543360c99cee160070ba8c12d17b04c7d0a3a5ccf3b2fb1/sumeds-0.5.0-py3-none-any.whl", hash = "sha256:0d98cf04ad9e9c16eff1a803dd458a63be4e0b038824a077bf143cd76494458b", size = 51762, upload-time = "2026-11-05T20:08:20.981Z" },
 ]
 
 [[package]]

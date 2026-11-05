@@ -10,7 +10,7 @@ from importlib.resources import files
 from pathlib import Path
 
 import polars as pl
-from sumeds import load_rules
+from sumeds import load_rules, registered_rules
 
 RULES_FP = Path(__file__).parents[1] / "src" / "MC_MED_MEDS" / "sumeds_rules.yaml"
 
@@ -38,6 +38,12 @@ EXPECTED = {
 
 def test_rules_file_is_packaged():
     assert files("MC_MED_MEDS").joinpath("sumeds_rules.yaml").is_file()
+
+
+def test_rules_are_registered_under_the_spec_name():
+    """`suMEDS-extract spec=MC-MED` and `--rules MC-MED` find the rules by this entry point."""
+    assert registered_rules()["MC-MED"] == "MC_MED_MEDS:sumeds_rules.yaml"
+    assert load_rules("MC-MED") == load_rules(RULES_FP)
 
 
 def test_rules_load_in_sumeds():

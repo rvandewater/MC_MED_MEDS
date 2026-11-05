@@ -21,14 +21,17 @@ classifiers = [
 # Capped explicitly below the next minor: MEDS-Extract 0.x minors are breaking (MESSY syntax, runner
 # CLI), so raise this deliberately when migrating. The `[download]` extra provides
 # `meds-extract-download`, which `meds-extract-run` spawns to stage the raw data.
+# suMEDS provides `suMEDS-extract`, which runs this ETL and then enriches its code metadata with
+# the rules registered below; 0.5 is the first release with it. It is capped below the next minor
+# for the same reason (its rules format and CLI are still 0.x).
 dependencies = [
   "MEDS-extract[download]>=0.8.0,<0.9",
+  "sumeds>=0.5,<0.6",
 ]
 
 [dependency-groups]
 dev = ["pre-commit<4"]
-# tests/test_sumeds_rules.py loads the packaged rules with suMEDS itself.
-tests = ["pytest", "sumeds>=0.4"]
+tests = ["pytest"]
 
 [tool.setuptools_scm]
 fallback_version = "0.0.0"
@@ -38,6 +41,11 @@ fallback_version = "0.0.0"
 # output's provenance metadata is stamped with this package's version automatically.
 [project.entry-points."MEDS_extract.pipelines"]
 "MC-MED" = "MC_MED_MEDS.configs:event_configs.yaml"
+
+# Registers the suMEDS rules under the same name, so `suMEDS-extract spec=MC-MED` and
+# `--rules MC-MED` find them.
+[project.entry-points."sumeds.rules"]
+"MC-MED" = "MC_MED_MEDS:sumeds_rules.yaml"
 
 [project.urls]
 Homepage = "https://github.com/rvandewater/MC_MED_MEDS"

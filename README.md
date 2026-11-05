@@ -12,8 +12,15 @@ An ETL to extract the MC-MED (Multimodal Clinical Monitoring in the Emergency De
 
 ```bash
 pip install MC-MED-MEDS
-meds-extract-run spec=MC-MED output_dir=/path/to/output
+suMEDS-extract spec=MC-MED output_dir=/path/to/output
 ```
+
+[suMEDS](https://github.com/rvandewater/SumMEDS)' `suMEDS-extract` (installed with this package)
+runs the ETL with `meds-extract-run spec=MC-MED`, then fills the official ICD titles and parents
+into `metadata/codes.parquet` (see
+[Enriching code metadata with suMEDS](#enriching-code-metadata-with-sumeds)). Arguments before a
+`--` go to `meds-extract-run`, and arguments after it go to `suMEDS-enrich`. For the plain ETL, run
+`meds-extract-run spec=MC-MED output_dir=...` with the same arguments.
 
 Raw data is downloaded automatically per the `sources:` block of the packaged configuration; set any
 required credentials as environment variables (see below). To run against pre-staged raw data
@@ -33,7 +40,7 @@ for the project. Export your PhysioNet credentials before running the ETL:
 ```bash
 export PHYSIONET_USERNAME=...
 export PHYSIONET_PASSWORD=...
-meds-extract-run spec=MC-MED output_dir=/path/to/output download_dest_dir=/path/to/raw
+suMEDS-extract spec=MC-MED output_dir=/path/to/output download_dest_dir=/path/to/raw
 ```
 
 Only the tabular CSVs the ETL reads are downloaded (`visits`, `orders`, `labs`, `rads`,
@@ -108,12 +115,26 @@ which the config treats the same as null.
 
 ICD vocabulary work lives in [suMEDS](https://github.com/rvandewater/SumMEDS) rather than in this
 ETL. The package ships the rules for it,
-[`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml):
+[`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml), registered in
+suMEDS's `sumeds.rules` entry-point group under the same name as the MEDS-Extract spec, `MC-MED`.
+That is how `suMEDS-extract spec=MC-MED` finds them, and `--rules MC-MED` works for any suMEDS
+command. `suMEDS-extract` replaces `metadata/codes.parquet` only once the enriched table is
+complete, and it stays valid MEDS code metadata. By default the ICD data comes from suMEDS's
+ontology packs, fetched from GitHub on first use and cached; no Athena download is needed. suMEDS
+options go after a `--`:
 
 ```bash
-pip install "sumeds>=0.4"
-RULES="$(python -c 'from importlib.resources import files; print(files("MC_MED_MEDS") / "sumeds_rules.yaml")')"
-suMEDS-enrich "$OUTPUT_DIR/metadata/codes.parquet" -o codes_enriched.parquet --rules "$RULES"
+# Also look codes up in your own OHDSI Athena download:
+suMEDS-extract spec=MC-MED output_dir=/path/to/output -- --athena-csv /path/to/athena
+# Use only already cached packs (no network):
+suMEDS-extract spec=MC-MED output_dir=/path/to/output -- --offline
+```
+
+Running it again on an existing output skips the pipeline stages that are already done and
+enriches again. To enrich the `codes.parquet` of an existing build instead:
+
+```bash
+suMEDS-enrich "$OUTPUT_DIR/metadata/codes.parquet" -o "$OUTPUT_DIR/metadata/codes.parquet" --rules MC-MED
 ```
 
 The rules validate the `ED_DIAGNOSIS//ICD10CM//…`, `ED_DIAGNOSIS//ICD9CM//…`, `PMH//ICD10CM//…` and
@@ -122,6 +143,36 @@ CDC/NCHS and CMS files). They add the official title where a code has none, the 
 ancestors as `parent_codes`, and the nearest ancestor that is itself a code of the same family
 (ED diagnoses and past medical history are linked separately). The same rules work with
 `suMEDS … --rules …` to build a privacy-masked code catalog of the output.
+
+## Summary statistics
+
+[`tests/regression/full_summary_stats.json`](tests/regression/full_summary_stats.json) is a
+[meds_summary_stats](https://github.com/Medical-Event-Data-Standard/meds_summary_stats) fingerprint of
+the MEDS dataset this ETL builds from the full MC-MED 1.0.1 release with
+`suMEDS-extract spec=MC-MED`, so its code-metadata coverage includes the suMEDS enrichment. It covers
+subject, event and measurement counts, digests of the code vocabulary, per-subject, value and time
+distributions, code-metadata coverage, the splits and the schema. It names no code and reports no
+cell of fewer than 20 subjects and no minimum or maximum, which is what makes it safe to publish.
+Because it is committed next to the ETL, its diff shows what an ETL change did to the output, and
+two ETL versions can be compared without access to the data.
+
+Regenerate it in every pull request that changes the output, from a build of that branch:
+
+```bash
+# Build the release with this checkout, then summarize it
+scripts/summary_stats.sh full --input-dir $RAW_INPUT_DIR
+# Or summarize a build of this checkout you already have
+scripts/summary_stats.sh full --meds-dir $MEDS_OUTPUT_DIR
+```
+
+Both print how the statistics changed against the committed baseline before overwriting it. Add
+`--compare` to check a build without writing anything; it exits 1 when
+[`tests/regression/policy.yaml`](tests/regression/policy.yaml) flags an error. Rebuilding the same
+commit reproduces the baseline exactly, so any finding is a change in the output. CI cannot rebuild the
+credentialed release, so the [Summary stats workflow](.github/workflows/summary-stats.yaml) only warns
+when a pull request changes `src/` (the config or the suMEDS rules) without regenerating the
+baseline. A MEDS-Extract, suMEDS or polars upgrade can also move the output, so check it with
+`--compare`.
 
 ## How this package works
 
@@ -134,6 +185,9 @@ generic runner (`meds-extract-run`) does everything else: staged download, the c
 pipeline, and provenance stamping. See the
 [MEDS-Extract documentation](https://github.com/mmcdermott/MEDS_extract) for the MESSY format and
 runner details.
+A second entry point registers
+[`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml) with suMEDS under the same
+name, which is all `suMEDS-extract spec=MC-MED` needs to enrich the output.
 
 ## Development
 
@@ -146,8 +200,9 @@ uv run pytest tests/ -v
 The test suite validates offline that the packaged MESSY file is registered and parses, then runs
 the full pipeline end to end on a tiny, entirely synthetic dataset with MC-MED's documented column
 layout and the quirks of the real files (`tests/conftest.py`, `tests/test_e2e_synthetic.py`), and
-checks that the packaged suMEDS rules match the codes it writes (`tests/test_sumeds_rules.py`). No
-real MC-MED data is used in CI.
+checks that the packaged suMEDS rules match the codes it writes (`tests/test_sumeds_rules.py`) and
+that `suMEDS-extract spec=MC-MED` enriches them, offline against a tiny synthetic ontology pack
+(`tests/test_run_with_enrichment.py`). No real MC-MED data is used in CI.
 
 To publish: set up a [PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/) for this
 repository (see [the template's
