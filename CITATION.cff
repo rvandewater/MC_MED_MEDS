@@ -1,0 +1,13 @@
+cff-version: 1.2.0
+title: "MC-MED-MEDS"
+message: >-
+  If you use this software, please cite it using the metadata from this file.
+type: software
+authors:
+  - name: "Robin van de Water"
+    email: "r.p.vandewater@gmail.com"
+repository-code: "https://github.com/rvandewater/MC_MED_MEDS"
+abstract: >
+  An ETL to extract the MC-MED (Multimodal Clinical Monitoring in the Emergency Department) dataset into the MEDS format. Built on MEDS-Extract; the package registers a MESSY
+  configuration file that maps the raw MC-MED data to the MEDS format.
+license: MIT

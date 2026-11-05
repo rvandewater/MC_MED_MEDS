@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools-scm>=8.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "MC-MED-MEDS"
+dynamic = ["version"]
+authors = [
+  { name="Robin van de Water", email="r.p.vandewater@gmail.com" },
+]
+description = "An ETL to extract the MC-MED (Multimodal Clinical Monitoring in the Emergency Department) dataset into the MEDS format."
+readme = "README.md"
+# Mirrors MEDS-Extract 0.8's own interpreter range; a looser floor/ceiling here would admit
+# interpreters it cannot be installed on.
+requires-python = ">=3.11.4,<3.14"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+# Capped explicitly below the next minor: MEDS-Extract 0.x minors are breaking (MESSY syntax, runner
+# CLI), so raise this deliberately when migrating. The `[download]` extra provides
+# `meds-extract-download`, which `meds-extract-run` spawns to stage the raw data.
+dependencies = [
+  "MEDS-extract[download]>=0.8.0,<0.9",
+]
+
+[dependency-groups]
+dev = ["pre-commit<4"]
+tests = ["pytest"]
+
+[tool.setuptools_scm]
+fallback_version = "0.0.0"
+
+# Registers this dataset with MEDS-Extract's generic runner: after `pip install`,
+# `meds-extract-run spec=MC-MED output_dir=...` runs the whole ETL, and the
+# output's provenance metadata is stamped with this package's version automatically.
+[project.entry-points."MEDS_extract.pipelines"]
+"MC-MED" = "MC_MED_MEDS.configs:event_configs.yaml"
+
+[project.urls]
+Homepage = "https://github.com/rvandewater/MC_MED_MEDS"
+Issues = "https://github.com/rvandewater/MC_MED_MEDS/issues"

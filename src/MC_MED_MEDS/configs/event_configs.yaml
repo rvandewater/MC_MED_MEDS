@@ -1,0 +1,261 @@
+# The MESSY (MEDS-Extract Specification Syntax YAML) file for MC-MED.
+#
+# MC-MED (Multimodal Clinical Monitoring in the Emergency Department) — 118,385 adult ED visits
+# (70,545 patients) at Stanford Health Care, 2020–2022. https://physionet.org/content/mc-med/1.0.1/
+#
+# This ONE file defines the whole ETL: where the raw data lives (`sources:`) and how its rows
+# become MEDS events (the per-table sections below). Once this package is installed:
+#
+#     meds-extract-run spec=MC-MED output_dir=/path/to/output
+#
+# See https://github.com/mmcdermott/MEDS_extract for full documentation of the MESSY format.
+#
+# Dataset notes that shape the mapping below:
+#   * Patients are identified by `MRN`, ED visits by `CSN` (both de-identified integers).
+#     `visits`, `meds` and `pmh` carry `MRN`; `orders`, `labs`, `rads` and `numerics` carry only
+#     `CSN`, so they join `visits` on `CSN` to obtain the subject ID.
+#   * All dates/times are shifted per patient into 2150–2350. PhysioNet documents them as
+#     ISO-8601 strings; every time below is parsed leniently against several ISO layouts
+#     (`T`/space separator, optional fractional seconds, optional trailing `Z`, date-only), and
+#     rows matching none are dropped with a logged WARNING count.
+#   * `Age` is perturbed (±2 years, clipped to [18, 90]); no birth date exists, so age is emitted
+#     as a numeric `AGE` event at each ED arrival rather than as `MEDS_BIRTH`.
+#   * Every visit-scoped event carries the visit's `CSN` in an extra `csn` column, so MEDS events can
+#     be linked back to the raw tables and to the WFDB waveforms (`waveforms/{CSN[-3:]}/{CSN}/`).
+#   * Not extracted: the waveform records themselves (WFDB signal files, not tabular events),
+#     `waveform_summary.csv`, the next-visit outcome columns of `visits.csv`
+#     (`Hours_to_next_visit`, `Dispo_class_next_visit` — recoverable from the next visit's own
+#     events), and the provided `split_*.csv` files (see README for using them).
+
+sources:
+  dataset_version: "1.0.1"
+  dataset:
+    - type: physionet
+      base_url: https://physionet.org/files/mc-med/${sources.dataset_version}
+      username: ${oc.env:PHYSIONET_USERNAME}
+      password: ${oc.env:PHYSIONET_PASSWORD}
+      # Only the tabular files this ETL reads — skips the (very large) WFDB waveform tree.
+      include:
+        - visits.csv
+        - orders.csv
+        - labs.csv
+        - rads.csv
+        - numerics.csv
+        - meds.csv
+        - pmh.csv
+
+_defaults:
+  subject_id: $MRN
+
+# ------------------------------------------------------------------------------------------------
+# visits.csv — one row per ED visit (MRN, CSN): demographics, triage, ED course, dispositions.
+# ------------------------------------------------------------------------------------------------
+visits:
+  gender:
+    code: 'f"GENDER//{$Gender}"'
+    time: null
+  race:
+    code: 'f"RACE//{$Race}"'
+    time: null
+  ethnicity:
+    code: 'f"ETHNICITY//{$Ethnicity}"'
+    time: null
+
+  ed_arrival:
+    code: 'f"ED_ARRIVAL//{$Means_of_arrival ?? ''UNK''}"'
+    time: &arrival_time 'coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    csn: $CSN
+  age:
+    code: AGE
+    time: *arrival_time
+    numeric_value: $Age::?float64
+    csn: $CSN
+  payor:
+    code: 'f"PAYOR//{$Payor_class}"'
+    time: *arrival_time
+    csn: $CSN
+
+  # Triage. MC-MED gives no separate triage timestamp, so triage is placed at ED arrival.
+  triage_acuity:
+    code: 'f"TRIAGE//ESI//{$Triage_acuity}"'
+    time: *arrival_time
+    csn: $CSN
+  triage_chief_complaint:
+    code: 'f"TRIAGE//CHIEF_COMPLAINT//{$CC}"'
+    time: *arrival_time
+    csn: $CSN
+  triage_temp:
+    code: '"TRIAGE//TEMP//degC"'
+    time: *arrival_time
+    numeric_value: $Triage_Temp::?float64
+    csn: $CSN
+  triage_hr:
+    code: '"TRIAGE//HR//bpm"'
+    time: *arrival_time
+    numeric_value: $Triage_HR::?float64
+    csn: $CSN
+  triage_rr:
+    code: '"TRIAGE//RR//breaths/min"'
+    time: *arrival_time
+    numeric_value: $Triage_RR::?float64
+    csn: $CSN
+  triage_spo2:
+    code: '"TRIAGE//SPO2//%"'
+    time: *arrival_time
+    numeric_value: $Triage_SpO2::?float64
+    csn: $CSN
+  triage_sbp:
+    code: '"TRIAGE//SBP//mmHg"'
+    time: *arrival_time
+    numeric_value: $Triage_SBP::?float64
+    csn: $CSN
+  triage_dbp:
+    code: '"TRIAGE//DBP//mmHg"'
+    time: *arrival_time
+    numeric_value: $Triage_DBP::?float64
+    csn: $CSN
+
+  ed_roomed:
+    code: ED_ROOMED
+    time: 'coalesce($Roomed_time::?"%Y-%m-%dT%H:%M:%SZ", $Roomed_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Roomed_time::?"%Y-%m-%dT%H:%M:%S", $Roomed_time::?"%Y-%m-%d %H:%M:%S", $Roomed_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    csn: $CSN
+  ed_disposition:
+    code: 'f"ED_DISPOSITION//{$ED_dispo}"'
+    time: 'coalesce($Dispo_time::?"%Y-%m-%dT%H:%M:%SZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    csn: $CSN
+  hospital_admission:
+    # Only admitted visits have an Admit_time; all others drop (logged) here.
+    code: 'f"HOSPITAL_ADMISSION//{$Admit_service ?? ''UNK''}"'
+    time: 'coalesce($Admit_time::?"%Y-%m-%dT%H:%M:%SZ", $Admit_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Admit_time::?"%Y-%m-%dT%H:%M:%S", $Admit_time::?"%Y-%m-%d %H:%M:%S", $Admit_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    csn: $CSN
+  ed_departure:
+    # numeric_value: ED length of stay in hours.
+    code: ED_DEPARTURE
+    time: &departure_time 'coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    numeric_value: $ED_LOS::?float64
+    csn: $CSN
+
+  # Primary ED diagnosis, recorded at ED departure.
+  ed_diagnosis_icd10:
+    code: 'f"ED_DIAGNOSIS//ICD10CM//{$Dx_ICD10}"'
+    time: *departure_time
+    csn: $CSN
+    _metadata:
+      _self:
+        description: $Dx_name
+  ed_diagnosis_icd9:
+    code: 'f"ED_DIAGNOSIS//ICD9CM//{$Dx_ICD9}"'
+    time: *departure_time
+    csn: $CSN
+
+  hospital_discharge:
+    # MC-MED has no discharge timestamp; it is reconstructed as Arrival_time + Hosp_LOS (days),
+    # since Hosp_LOS spans the whole encounter including the ED stay. numeric_value: Hosp_LOS.
+    code: 'f"HOSPITAL_DISCHARGE//{$DC_dispo ?? ''UNK''}"'
+    time: 'coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f") + ($Hosp_LOS::?float64 * 86400)::?int64::seconds'
+    numeric_value: $Hosp_LOS::?float64
+    csn: $CSN
+
+# ------------------------------------------------------------------------------------------------
+# orders.csv — every order placed during the visit (CSN only → join visits for MRN).
+# ------------------------------------------------------------------------------------------------
+orders:
+  _table:
+    joins:
+      visits:
+        key: CSN
+        cols: [MRN]
+  order:
+    code: 'f"ORDER//{$Order_type ?? ''UNK''}//{$Procedure_ID}"'
+    time: 'coalesce($Order_time::?"%Y-%m-%dT%H:%M:%SZ", $Order_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Order_time::?"%Y-%m-%dT%H:%M:%S", $Order_time::?"%Y-%m-%d %H:%M:%S", $Order_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    csn: $CSN
+    _metadata:
+      _self:
+        description: $Procedure_name
+  medication_administration:
+    # Medication orders only: first administration time (null for all other order types → dropped).
+    code: 'f"MEDICATION_ADMINISTRATION//{$Procedure_ID}"'
+    time: 'coalesce($First_admin_time::?"%Y-%m-%dT%H:%M:%SZ", $First_admin_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $First_admin_time::?"%Y-%m-%dT%H:%M:%S", $First_admin_time::?"%Y-%m-%d %H:%M:%S", $First_admin_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    csn: $CSN
+    _metadata:
+      _self:
+        description: $Procedure_name
+
+# ------------------------------------------------------------------------------------------------
+# labs.csv — one row per lab component result (CSN only → join visits for MRN).
+# ------------------------------------------------------------------------------------------------
+labs:
+  _table:
+    joins:
+      visits:
+        key: CSN
+        cols: [MRN]
+  lab:
+    # numeric_value is the parsed Component_value (null for non-numeric results); text_value keeps
+    # the raw Component_result (e.g. "Positive", "<0.5") for every row.
+    code: 'f"LAB//{$Component_name}//{$Component_units ?? ''UNK''}"'
+    time: 'coalesce($Result_time::?"%Y-%m-%dT%H:%M:%SZ", $Result_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Result_time::?"%Y-%m-%dT%H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    numeric_value: $Component_value::?float64
+    text_value: $Component_result
+    csn: $CSN
+
+# ------------------------------------------------------------------------------------------------
+# rads.csv — imaging studies with de-identified impression text (CSN only → join visits).
+# ------------------------------------------------------------------------------------------------
+rads:
+  _table:
+    joins:
+      visits:
+        key: CSN
+        cols: [MRN]
+  radiology_report:
+    code: 'f"RADIOLOGY//{$Study}"'
+    time: 'coalesce($Result_time::?"%Y-%m-%dT%H:%M:%SZ", $Result_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Result_time::?"%Y-%m-%dT%H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S%.f")'
+    text_value: $Impression
+    csn: $CSN
+
+# ------------------------------------------------------------------------------------------------
+# numerics.csv — charted and monitor vital signs (CSN only → join visits for MRN).
+# Measures: HR, RR, SpO2, SBP, DBP, MAP, Temp (°F), Perf, Pain, LPM_O2, 1min_HRV, 5min_HRV.
+# Source is "Chart" (nursing documentation) or "Monitor" (bedside monitor database).
+# ------------------------------------------------------------------------------------------------
+numerics:
+  _table:
+    joins:
+      visits:
+        key: CSN
+        cols: [MRN]
+  vital:
+    code: 'f"VITAL//{$Measure}//{$Source}"'
+    time: 'coalesce($Time::?"%Y-%m-%dT%H:%M:%SZ", $Time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Time::?"%Y-%m-%dT%H:%M:%S", $Time::?"%Y-%m-%d %H:%M:%S", $Time::?"%Y-%m-%d %H:%M:%S%.f")'
+    numeric_value: $Value::?float64
+    csn: $CSN
+
+# ------------------------------------------------------------------------------------------------
+# pmh.csv — past medical history diagnoses (MRN).
+# ------------------------------------------------------------------------------------------------
+pmh:
+  past_medical_history:
+    code: 'f"PMH//{$CodeType}//{$Code}"'
+    time: 'coalesce($Noted_date::?"%Y-%m-%d", $Noted_date::?"%Y-%m-%dT%H:%M:%SZ", $Noted_date::?"%Y-%m-%dT%H:%M:%S%.fZ", $Noted_date::?"%Y-%m-%dT%H:%M:%S", $Noted_date::?"%Y-%m-%d %H:%M:%S")'
+    _metadata:
+      _self:
+        description: $Desc10
+
+# ------------------------------------------------------------------------------------------------
+# meds.csv — home medication list (MRN). Placed at Entry_date (when the medication was recorded),
+# so events never precede the point the information was available; End_date marks discontinuation.
+# ------------------------------------------------------------------------------------------------
+meds:
+  home_medication:
+    code: 'f"HOME_MEDICATION//{$Med_ID}"'
+    time: 'coalesce($Entry_date::?"%Y-%m-%d", $Entry_date::?"%Y-%m-%dT%H:%M:%SZ", $Entry_date::?"%Y-%m-%dT%H:%M:%S%.fZ", $Entry_date::?"%Y-%m-%dT%H:%M:%S", $Entry_date::?"%Y-%m-%d %H:%M:%S")'
+    _metadata:
+      _self:
+        description: $Name
+  home_medication_end:
+    code: 'f"HOME_MEDICATION_END//{$Med_ID}"'
+    time: 'coalesce($End_date::?"%Y-%m-%d", $End_date::?"%Y-%m-%dT%H:%M:%SZ", $End_date::?"%Y-%m-%dT%H:%M:%S%.fZ", $End_date::?"%Y-%m-%dT%H:%M:%S", $End_date::?"%Y-%m-%d %H:%M:%S")'
+    _metadata:
+      _self:
+        description: $Name

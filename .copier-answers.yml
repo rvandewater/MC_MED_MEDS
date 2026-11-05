@@ -1,0 +1,14 @@
+# Changes here will be overwritten by Copier; NEVER EDIT MANUALLY
+_commit: 0.1.0
+_src_path: gh:Medical-Event-Data-Standard/ETL_MEDS_Template
+author_email: r.p.vandewater@gmail.com
+author_name: Robin van de Water
+dataset_name: MC-MED
+github_org: rvandewater
+github_repo: MC_MED_MEDS
+has_demo: false
+package_description:
+  An ETL to extract the MC-MED (Multimodal Clinical Monitoring
+  in the Emergency Department) dataset into the MEDS format.
+package_name: MC_MED_MEDS
+pypi_name: MC-MED-MEDS
