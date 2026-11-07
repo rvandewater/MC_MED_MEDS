@@ -23,11 +23,12 @@ classifiers = [
 # CLI), so raise this deliberately when migrating. The `[download]` extra provides
 # `meds-extract-download`, which `meds-extract-run` spawns to stage the raw data.
 # suMEDS provides `suMEDS-extract`, which runs this ETL and then enriches its code metadata with
-# the rules registered below; 0.5 is the first release with it. It is capped below the next minor
-# for the same reason (its rules format and CLI are still 0.x).
+# the rules registered below (since 0.5). 0.6 writes `parent_names` as a map from each parent code
+# to its name, where earlier releases wrote a list aligned with `parent_codes`. It is capped below
+# the next minor for the same reason (its rules format, output and CLI are still 0.x).
 dependencies = [
   "MEDS-extract[download]>=0.8.0,<0.9",
-  "sumeds>=0.5,<0.6",
+  "sumeds>=0.6,<0.7",
 ]
 
 [dependency-groups]

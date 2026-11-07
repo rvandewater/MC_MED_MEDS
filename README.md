@@ -148,9 +148,12 @@ suMEDS-enrich "$OUTPUT_DIR/metadata/codes.parquet" -o "$OUTPUT_DIR/metadata/code
 
 The rules validate the `ED_DIAGNOSIS//ICD10CM//…`, `ED_DIAGNOSIS//ICD9CM//…`, `PMH//ICD10CM//…` and
 `PMH//ICD9CM//…` codes against suMEDS's versioned ICD-10-CM and ICD-9-CM data (built from the
-CDC/NCHS and CMS files). They add the official title where a code has none, the vocabulary
-ancestors as `parent_codes`, and the nearest ancestor that is itself a code of the same family
-(ED diagnoses and past medical history are linked separately). The same rules work with
+CDC/NCHS and CMS files). They add the official title where a code has none, and the ICD code
+itself and its vocabulary ancestors as `parent_codes`. `parent_names` maps each of those to its
+official title, so a past-medical-history code that keeps its `pmh.csv` description still carries
+the official one. `parent_codes` also gets the nearest ancestor that is itself a code of the same
+family (ED diagnoses and past medical history are linked separately); its description is in its
+own row, so it has no `parent_names` entry. The same rules work with
 `suMEDS … --rules …` to build a privacy-masked code catalog of the output.
 
 ## Summary statistics

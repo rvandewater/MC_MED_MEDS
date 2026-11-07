@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 import polars as pl
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from conftest import run_command
@@ -66,6 +67,16 @@ PACKS = {
 
 def title(vocabulary: str, code: str) -> str:
     return f"Synthetic {vocabulary} title {code}"
+
+
+def parent_names(row: dict) -> dict[str, str]:
+    """A row's `parent_names` map, from each parent code to its name, as a dict.
+
+    suMEDS writes it as a Parquet `map<string, string>`, which Polars 2 reads as a dict and Polars 1 as a list
+    of key/value structs.
+    """
+    names = row["parent_names"] or {}
+    return names if isinstance(names, dict) else {entry["key"]: entry["value"] for entry in names}
 
 
 def _sha256(data: bytes) -> str:
@@ -147,7 +158,9 @@ def enriched_codes(enriched_output: Path) -> pl.DataFrame:
 
 def test_codes_parquet_is_replaced_by_valid_meds_metadata(enriched_output: Path):
     metadata = enriched_output / "metadata"
-    CodeMetadataSchema.validate(pq.read_table(metadata / "codes.parquet"))
+    codes = metadata / "codes.parquet"
+    CodeMetadataSchema.validate(pq.read_table(codes))
+    assert pq.read_schema(codes).field("parent_names").type == pa.map_(pa.string(), pa.string())
     assert not list(metadata.glob(".*enriched*")), "the temporary enrichment output was left behind"
 
 
@@ -160,19 +173,35 @@ def test_data_matches_the_plain_etl(enriched_output: Path, events: pl.DataFrame)
 def test_icd_codes_get_titles_and_parents(enriched_codes: pl.DataFrame):
     rows = {r["code"]: r for r in enriched_codes.to_dicts()}
 
-    # No description from the ETL: the pack title fills it.
+    # No description from the ETL: the pack title fills it, and every added parent is named.
     ed = rows["ED_DIAGNOSIS//ICD10CM//A00.0"]
     assert ed["description"] == title("ICD10CM", "A00.0")
     assert ed["parent_codes"] == ["ICD10CM//A00.0", "ICD10CM//A00"]
+    assert parent_names(ed) == {
+        "ICD10CM//A00.0": title("ICD10CM", "A00.0"),
+        "ICD10CM//A00": title("ICD10CM", "A00"),
+    }
     assert rows["ED_DIAGNOSIS//ICD9CM//V01.1"]["description"] == title("ICD9CM", "V01.1")
     assert rows["PMH//ICD9CM//401.9"]["description"] == title("ICD9CM", "401.9")  # empty Desc10
-    assert rows["PMH//ICD9CM//V45.81"]["parent_codes"] == ["ICD9CM//V45.81", "ICD9CM//V45.8", "ICD9CM//V45"]
+    v45 = rows["PMH//ICD9CM//V45.81"]
+    assert v45["parent_codes"] == ["ICD9CM//V45.81", "ICD9CM//V45.8", "ICD9CM//V45"]
+    assert parent_names(v45) == {
+        "ICD9CM//V45.81": title("ICD9CM", "V45.81"),
+        "ICD9CM//V45.8": title("ICD9CM", "V45.8"),
+        "ICD9CM//V45": title("ICD9CM", "V45"),
+    }
 
-    # A description from the ETL is kept; only the parents are added.
+    # A description from the ETL is kept; only the parents are added, so the official title of the
+    # code itself is only in `parent_names`.
     pmh = rows["PMH//ICD10CM//Z00.0"]
     assert pmh["description"] == "Synthetic history A"
     assert pmh["parent_codes"] == ["ICD10CM//Z00.0", "ICD10CM//Z00"]
+    assert parent_names(pmh) == {
+        "ICD10CM//Z00.0": title("ICD10CM", "Z00.0"),
+        "ICD10CM//Z00": title("ICD10CM", "Z00"),
+    }
 
     # Codes that are not in the vocabulary, and non-ICD codes, are left alone.
-    assert not rows["PMH//ICD10CM//S72.00XA"]["parent_codes"]
-    assert not rows["ORDER//Lab//P1"]["parent_codes"]
+    for code in ("PMH//ICD10CM//S72.00XA", "ORDER//Lab//P1"):
+        assert not rows[code]["parent_codes"], code
+        assert not parent_names(rows[code]), code
