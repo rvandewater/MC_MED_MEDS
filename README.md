@@ -139,12 +139,21 @@ suMEDS-extract spec=MC-MED output_dir=/path/to/output -- --athena-csv /path/to/a
 suMEDS-extract spec=MC-MED output_dir=/path/to/output -- --offline
 ```
 
-Running it again on an existing output skips the pipeline stages that are already done and
-enriches again. To enrich the `codes.parquet` of an existing build instead:
+Enrichment is on by default, and a failed enrichment (for example, on a server without internet
+access) does not fail the ETL: `metadata/codes.parquet` is left as the ETL wrote it, a warning gives
+the command to enrich it later, and the exit code is still 0. Whether a build was enriched is recorded
+in `metadata/dataset.json`, under `sumeds_enrichment.enriched`. To enrich a build afterwards, with
+the same rules and options as `suMEDS-extract`:
 
 ```bash
-suMEDS-enrich "$OUTPUT_DIR/metadata/codes.parquet" -o "$OUTPUT_DIR/metadata/codes.parquet" --rules MC-MED
+suMEDS-enrich /path/to/output
+# Without internet access, from a copy of the sumeds-ontologies packs directory:
+suMEDS-enrich /path/to/output --ontology-source /path/to/sumeds-ontologies/ontologies --offline
 ```
+
+To make a failed enrichment an error instead, add `-- --strict`; to skip enrichment, run
+`meds-extract-run spec=MC-MED ...` instead. Running `suMEDS-extract` again on an existing output
+skips the pipeline stages that are already done and enriches again.
 
 The rules validate the `ED_DIAGNOSIS//ICD10CM//…`, `ED_DIAGNOSIS//ICD9CM//…`, `PMH//ICD10CM//…` and
 `PMH//ICD9CM//…` codes against suMEDS's versioned ICD-10-CM and ICD-9-CM data (built from the
@@ -216,8 +225,8 @@ The test suite validates offline that the packaged MESSY file is registered and 
 the full pipeline end to end on a tiny, entirely synthetic dataset with MC-MED's documented column
 layout and the quirks of the real files (`tests/conftest.py`, `tests/test_e2e_synthetic.py`), and
 checks that the packaged suMEDS rules match the codes it writes (`tests/test_sumeds_rules.py`) and
-that `suMEDS-extract spec=MC-MED` enriches them, offline against a tiny synthetic ontology pack
-(`tests/test_run_with_enrichment.py`). No real MC-MED data is used in CI.
+that `suMEDS-extract spec=MC-MED` enriches them, offline against a tiny synthetic ontology pack, and
+that a failed enrichment keeps the plain output and can be retried (`tests/test_run_with_enrichment.py`). No real MC-MED data is used in CI.
 
 To release, bump `project.version` in `pyproject.toml` with `uv version --bump minor|patch|major` in a pull
 request and merge it into `main`. The publish workflow then uploads the new version to PyPI (through a
