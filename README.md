@@ -156,7 +156,7 @@ meds-extract-run spec=MC-MED output_dir=/path/to/output skip_stages=[sumeds_enri
 meds-extract-run spec=MC-MED output_dir=/path/to/output "overrides=['++stage_cfg.strict=true']"
 # Use a local copy of the packs (or set SUMEDS_ONTOLOGY_SOURCE=/path/to/packs):
 meds-extract-run spec=MC-MED output_dir=/path/to/output \
-  "overrides=['++stage_cfg.ontology_source=/path/to/sumeds-ontologies/ontologies']"
+	"overrides=['++stage_cfg.ontology_source=/path/to/sumeds-ontologies/ontologies']"
 # Also look codes up in your own OHDSI Athena download:
 meds-extract-run spec=MC-MED output_dir=/path/to/output "overrides=['++stage_cfg.athena_csv=/path/to/athena']"
 ```
@@ -166,8 +166,10 @@ from a login node, then run the ETL offline on the compute nodes with the same c
 
 ```bash
 export XDG_CACHE_HOME=/shared/project/cache
-suMEDS-enrich --prefetch --rules MC-MED   # login node
-meds-extract-run spec=MC-MED output_dir=/path/to/output "overrides=['++stage_cfg.offline=true']"  # compute node
+# On a login node:
+suMEDS-enrich --prefetch --rules MC-MED
+# On a compute node:
+meds-extract-run spec=MC-MED output_dir=/path/to/output "overrides=['++stage_cfg.offline=true']"
 ```
 
 The rules validate the `ED_DIAGNOSIS//ICD10CM//…`, `ED_DIAGNOSIS//ICD9CM//…`, `PMH//ICD10CM//…` and
