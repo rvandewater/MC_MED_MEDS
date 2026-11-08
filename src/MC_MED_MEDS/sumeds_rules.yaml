@@ -6,10 +6,11 @@
 # event text_value instead). suMEDS validates these codes against its versioned ICD-10-CM and
 # ICD-9-CM data (sumeds-ontologies, pinned release, built from the CDC/NCHS and CMS files), adds
 # the official title where the code has none, and the vocabulary ancestors as `parent_codes`, with
-# their titles in the `parent_names` map. pyproject.toml registers this file as `MC-MED`, so
-# `suMEDS-extract spec=MC-MED` applies it after the ETL, and for an existing build:
+# their titles in the `parent_names` map. pyproject.toml registers this file as `MC-MED`, so the
+# spec's `sumeds_enrich` post-stage applies it at the end of `meds-extract-run spec=MC-MED`, and
+# for an existing build:
 #
-#   suMEDS-enrich $MEDS_OUTPUT_DIR/metadata/codes.parquet -o codes_enriched.parquet --rules MC-MED
+#   suMEDS-enrich $MEDS_OUTPUT_DIR --rules MC-MED
 #
 # Every pattern matches a code layout of `configs/event_configs.yaml` exactly, so `UNK` and
 # malformed codes match nothing; tests/test_sumeds_rules.py checks them against the codes the ETL

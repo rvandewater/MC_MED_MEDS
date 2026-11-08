@@ -39,7 +39,7 @@ activating it. Activating the environment is optional; if you prefer to drop the
 it first:
 
 ```bash
-# Optional: lets you run `pytest`, `pre-commit` or `suMEDS-extract` directly, without `uv run`.
+# Optional: lets you run `pytest`, `pre-commit` or `meds-extract-run` directly, without `uv run`.
 source .venv/bin/activate
 ```
 
@@ -81,9 +81,10 @@ You can also run the tests. They run offline in under a minute and need no MC-ME
 uv run pytest tests/ -v
 ```
 
-The suite builds the synthetic dataset with `meds-extract-run spec=MC-MED` once per session and checks the
-events it writes (`test_e2e_synthetic.py`). It also checks that the suMEDS rules match those codes
-(`test_sumeds_rules.py`) and that `suMEDS-extract spec=MC-MED` enriches them against a tiny synthetic ICD pack
+The suite builds the synthetic dataset with `meds-extract-run spec=MC-MED skip_stages=[sumeds_enrich]` once
+per session and checks the events it writes (`test_e2e_synthetic.py`). It also checks that the suMEDS rules
+match those codes (`test_sumeds_rules.py`) and that `meds-extract-run spec=MC-MED` enriches them against a tiny
+synthetic ICD pack, soft-fails without one, and gives the plain ETL with the stage skipped
 (`test_run_with_enrichment.py`). Tests and pre-commit checks are run as part of the continuous integration
 process, on Python 3.11 to 3.13, so any failures will prevent pull requests from being merged.
 

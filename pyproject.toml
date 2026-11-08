@@ -22,15 +22,15 @@ classifiers = [
 # Capped explicitly below the next minor: MEDS-Extract 0.x minors are breaking (MESSY syntax, runner
 # CLI), so raise this deliberately when migrating. The `[download]` extra provides
 # `meds-extract-download`, which `meds-extract-run` spawns to stage the raw data.
-# suMEDS provides `suMEDS-extract`, which runs this ETL and then enriches its code metadata with
-# the rules registered below (since 0.5). 0.6 writes `parent_names` as a map from each parent code
-# to its name, where earlier releases wrote a list aligned with `parent_codes`. 0.6.1 makes a failed
-# enrichment a warning instead of an error (the ETL output is kept as is, e.g. without internet) and
-# records whether the build was enriched in `metadata/dataset.json`. It is capped below the next
-# minor for the same reason (its rules format, output and CLI are still 0.x).
+# MEDS-Extract 0.8.1 runs the `etl.post_stages` the spec declares after the canonical pipeline.
+# suMEDS 0.6.2 registers the `sumeds_enrich` stage the spec declares there, which enriches the code
+# metadata with the rules registered below. A failed enrichment is a warning, not an error (the ETL
+# output is kept as is, e.g. without internet), and `metadata/dataset.json` records whether the
+# build was enriched. suMEDS is capped below the next minor for the same reason as MEDS-Extract
+# (its rules format, output and CLI are still 0.x).
 dependencies = [
-  "MEDS-extract[download]>=0.8.0,<0.9",
-  "sumeds>=0.6.1,<0.7",
+  "MEDS-extract[download]>=0.8.1,<0.9",
+  "sumeds>=0.6.2,<0.7",
 ]
 
 [dependency-groups]
@@ -50,7 +50,7 @@ MC_MED_MEDS = ["**/__pycache__/*", "**/*.pyc", "**/.DS_Store"]
 [project.entry-points."MEDS_extract.pipelines"]
 "MC-MED" = "MC_MED_MEDS.configs:event_configs.yaml"
 
-# Registers the suMEDS rules under the same name, so `suMEDS-extract spec=MC-MED` and
+# Registers the suMEDS rules under the same name, so the spec's `sumeds_enrich: {rules: MC-MED}` and
 # `--rules MC-MED` find them.
 [project.entry-points."sumeds.rules"]
 "MC-MED" = "MC_MED_MEDS:sumeds_rules.yaml"

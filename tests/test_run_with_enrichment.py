@@ -1,14 +1,16 @@
-"""`suMEDS-extract spec=MC-MED` runs the ETL and then suMEDS enrichment, offline.
+"""`meds-extract-run spec=MC-MED` runs the ETL and then suMEDS enrichment, offline.
 
-This package registers its rules in suMEDS's `sumeds.rules` entry-point group under the same name
-as its MEDS-Extract spec, so `suMEDS-extract` finds them from `spec=MC-MED` alone. The ontology
-source is a tiny pack repository in suMEDS's `sumeds-ontologies/0.1` layout, built
-here with made-up titles for the synthetic codes of ``conftest.py`` (and their categories), so
-the test reads nothing over the network and does not depend on the published packs.
+The spec declares suMEDS's `sumeds_enrich` stage in `etl.post_stages`, with the rules this package
+registers in suMEDS's `sumeds.rules` entry-point group under the same name, `MC-MED`. The ontology
+source is a tiny pack repository in suMEDS's `sumeds-ontologies/0.1` layout, built here with
+made-up titles for the synthetic codes of ``conftest.py`` (and their categories), and passed to the
+stage at run time as `overrides=['++stage_cfg.ontology_source=DIR']`, so the test reads nothing over
+the network and does not depend on the published packs.
 
-A failed enrichment does not fail the ETL: with an empty pack source, `suMEDS-extract` keeps the plain
+A failed enrichment does not fail the ETL: with an empty pack source, the run keeps the plain
 `codes.parquet`, records the failure in `metadata/dataset.json`, and `suMEDS-enrich OUTPUT` enriches it
-later.
+later. `skip_stages=[sumeds_enrich]` (the plain build of ``conftest.py``) gives exactly the ETL without
+the stage.
 """
 
 import csv
@@ -22,8 +24,11 @@ import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import yaml
 from conftest import run_command
 from meds import CodeMetadataSchema, DatasetMetadataSchema
+
+SPEC_FP = Path(__file__).parents[1] / "src" / "MC_MED_MEDS" / "configs" / "event_configs.yaml"
 
 # vocabulary -> release -> code -> parent (None for a category). PMH//ICD10CM//S72.00XA is
 # deliberately missing (it is not a valid ICD-10-CM code), so it must stay unenriched.
@@ -138,19 +143,20 @@ def ontology_source(tmp_path_factory) -> Path:
     return root
 
 
-def run_with_enrichment(output_dir: Path, raw_dir: Path, ontology_source: Path) -> Path:
-    run_command(
-        [
-            "suMEDS-extract",
-            "spec=MC-MED",
-            f"output_dir={output_dir}",
-            "do_download=false",
-            f"input_dir={raw_dir}",
-            "--",
-            "--ontology-source",
-            str(ontology_source),
-        ]
-    )
+def run_etl(output_dir: Path, raw_dir: Path, *, succeed: bool = True, **stage_options: Path | str) -> Path:
+    """`meds-extract-run spec=MC-MED`, passing `stage_options` to the `sumeds_enrich` stage."""
+    argv = [
+        "meds-extract-run",
+        "spec=MC-MED",
+        f"output_dir={output_dir}",
+        "do_download=false",
+        f"input_dir={raw_dir}",
+    ]
+    if stage_options:
+        # Overrides reach every stage of the pipeline, so `++` adds the key where a stage lacks it.
+        overrides = ",".join(f"'++stage_cfg.{name}={value}'" for name, value in stage_options.items())
+        argv.append(f"overrides=[{overrides}]")
+    run_command(argv, succeed=succeed)
     return output_dir
 
 
@@ -163,16 +169,16 @@ def enrichment_record(output_dir: Path) -> dict:
 
 @pytest.fixture(scope="session")
 def enriched_output(tmp_path_factory, raw_dir: Path, ontology_source: Path) -> Path:
-    return run_with_enrichment(
-        tmp_path_factory.mktemp("mc_med_enriched") / "MEDS_cohort", raw_dir, ontology_source
-    )
+    output_dir = tmp_path_factory.mktemp("mc_med_enriched") / "MEDS_cohort"
+    return run_etl(output_dir, raw_dir, ontology_source=ontology_source)
 
 
 @pytest.fixture(scope="session")
 def soft_failed_output(tmp_path_factory, raw_dir: Path) -> Path:
-    """`suMEDS-extract` with an empty pack source, as on a site that cannot reach the packs."""
+    """The ETL with an empty pack source, as on a site that cannot reach the packs."""
     no_packs = tmp_path_factory.mktemp("no_packs")
-    return run_with_enrichment(tmp_path_factory.mktemp("mc_med_soft_fail") / "MEDS_cohort", raw_dir, no_packs)
+    output_dir = tmp_path_factory.mktemp("mc_med_soft_fail") / "MEDS_cohort"
+    return run_etl(output_dir, raw_dir, ontology_source=no_packs)
 
 
 @pytest.fixture(scope="session")
@@ -259,3 +265,49 @@ def test_failed_enrichment_can_be_retried(
     run_command(["suMEDS-enrich", str(output_dir), "--ontology-source", str(ontology_source)])
     assert enrichment_record(output_dir)["enriched"] is True
     assert pl.read_parquet(output_dir / "metadata" / "codes.parquet").equals(enriched_codes)
+
+
+def test_skipping_the_stage_gives_the_plain_etl(meds_output: Path, raw_dir: Path, tmp_path: Path):
+    """`skip_stages=[sumeds_enrich]` writes no record, and the same cohort as the spec without the stage."""
+    assert "sumeds_enrichment" not in json.loads((meds_output / "metadata" / "dataset.json").read_text())
+
+    spec = yaml.safe_load(SPEC_FP.read_text())
+    del spec["etl"]["post_stages"]
+    spec["etl"]["dataset_name"] = "MC-MED"  # a spec given as a path has no registered name
+    spec_fp = tmp_path / "event_configs.yaml"
+    spec_fp.write_text(yaml.safe_dump(spec, sort_keys=False))
+    output_dir = tmp_path / "MEDS_cohort"
+    run_command(
+        [
+            "meds-extract-run",
+            f"spec={spec_fp}",
+            f"output_dir={output_dir}",
+            "do_download=false",
+            f"input_dir={raw_dir}",
+        ]
+    )
+
+    codes = Path("metadata", "codes.parquet")
+    assert pl.read_parquet(output_dir / codes).equals(pl.read_parquet(meds_output / codes))
+    shards = sorted(fp.relative_to(output_dir) for fp in (output_dir / "data").rglob("*.parquet"))
+    assert shards == sorted(fp.relative_to(meds_output) for fp in (meds_output / "data").rglob("*.parquet"))
+    for shard in shards:
+        assert pl.read_parquet(output_dir / shard).equals(pl.read_parquet(meds_output / shard)), shard
+
+
+def test_strict_makes_a_failed_enrichment_fail_the_run(raw_dir: Path, tmp_path: Path):
+    no_packs = tmp_path / "no_packs"
+    no_packs.mkdir()
+    output_dir = run_etl(
+        tmp_path / "MEDS_cohort", raw_dir, succeed=False, ontology_source=no_packs, strict="true"
+    )
+    assert not (output_dir / ".logs" / "sumeds_enrich.done").exists()
+
+
+def test_offline_reads_only_the_cache(raw_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """With `offline` and an empty cache, the default pack source fails at once, without the network."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    output_dir = run_etl(tmp_path / "MEDS_cohort", raw_dir, offline="true")
+    record = enrichment_record(output_dir)
+    assert record["enriched"] is False
+    assert "not in the ontology cache" in record["error"]
