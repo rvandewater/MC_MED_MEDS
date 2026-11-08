@@ -223,13 +223,21 @@
     }
   },
   "dataset": {
-    "created_at": "2026-11-07T19:18:53.450120+00:00",
+    "created_at": "2026-11-08T00:37:13.881549+00:00",
     "dataset_name": "MC-MED",
     "dataset_version": "1.0.1:0.1.0",
+    "description_uri": "https://physionet.org/content/mc-med/1.0.1/",
     "etl_name": "MEDS_transforms",
     "etl_version": "0.7.1",
+    "license": "PhysioNet Credentialed Health Data License 1.5.0",
     "meds_version": "0.4.1",
+    "other_extension_columns": [
+      "source_block"
+    ],
     "present": true,
+    "raw_source_id_columns": [
+      "csn"
+    ],
     "sumeds_enrichment": {
       "athena": false,
       "coverage": {
@@ -244,7 +252,7 @@
         ]
       },
       "enriched": true,
-      "enriched_at": "2026-11-07T19:19:02Z",
+      "enriched_at": "2026-11-08T00:37:22Z",
       "ontology_source": "rvandewater/sumeds-ontologies@v0.2.0",
       "options": {
         "child_codes": false,
@@ -256,8 +264,8 @@
         "sibling_codes": false
       },
       "rules": "MC-MED",
-      "rules_sha256": "8d88cea076ef6e2e1c64c270a7744ab263bbb9d6983e80fcb1b5d735455d45c3",
-      "sumeds_version": "0.6.1"
+      "rules_sha256": "940baee606a8fc972f029b7678dae6f6e409b6bd5fa7679cec4fda0f31cb9332",
+      "sumeds_version": "0.6.2"
     }
   },
   "dataset_digest": {
@@ -267,7 +275,7 @@
       "data/train/1.parquet": "sha256:c6159a36149c2cba60f2bf39c1221520454ee5f0d5d598f268d23d06c0b6a1d8",
       "data/tuning/0.parquet": "sha256:d4a5c8dcdeb20da6ef26c5684c69742801c5eba8e30cecad6e5a5f25ea2c2e37",
       "metadata/codes.parquet": "sha256:e4b54bc0a34a980efca9115a128254703f712935d61f55bed971f30933b50c45",
-      "metadata/dataset.json": "sha256:707576e0b30438b0185288759bfabea321bb185127d884c21ac3a593c56cbde9",
+      "metadata/dataset.json": "sha256:d2555d5837da98b4877eeb92f9d18009888715e0b52bd211f539c50fb0b42d2c",
       "metadata/subject_splits.parquet": "sha256:ba05e441e882831ef5d962ecee630e6ba724581ea960464c44c10b9900d0cc93"
     },
     "code_metadata": "sha256:afcd363e9fccd4f51d25c9a83b0a7e84b3d9699dd195ad74bf0adbf9e43ef8fe",
@@ -276,12 +284,12 @@
       "digest": "sha256:8036a8d76e9e0aa3cb0dd5e90222fadb04dbcebffd589c246b1e8ce3af4c9e25",
       "n_files": 4
     },
-    "dataset_metadata": "sha256:1373ae91ae232ef96ea4531699bab998ea97ec7819210e3b8eaf57614d7b5dc5",
+    "dataset_metadata": "sha256:5bd74f394d4813514d2378ac8334822b3bc0fb03be87c2abf3e63be49b8ebf37",
     "method": "files",
     "n_files": 7,
     "subject_splits": "sha256:9dfc91f7218aca294b2edfcaf49a302da7fb6a014a8501517496bd7693d4092f"
   },
-  "extracted_at": "2026-11-07T19:19:06.767764",
+  "extracted_at": "2026-11-08T00:37:27.197501",
   "layout": {
     "code_metadata_columns": {
       "code": "String",
