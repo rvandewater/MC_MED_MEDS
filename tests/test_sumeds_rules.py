@@ -41,7 +41,7 @@ def test_rules_file_is_packaged():
 
 
 def test_rules_are_registered_under_the_spec_name():
-    """`suMEDS-extract spec=MC-MED` and `--rules MC-MED` find the rules by this entry point."""
+    """The spec's `sumeds_enrich: {rules: MC-MED}` and `--rules MC-MED` find the rules by this entry point."""
     assert registered_rules()["MC-MED"] == "MC_MED_MEDS:sumeds_rules.yaml"
     assert load_rules("MC-MED") == load_rules(RULES_FP)
 

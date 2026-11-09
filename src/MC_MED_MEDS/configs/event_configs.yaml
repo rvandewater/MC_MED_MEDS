@@ -38,7 +38,8 @@
 #     (`Hours_to_next_visit`, `Dispo_class_next_visit` — recoverable from the next visit's own
 #     events), and the provided `split_*.csv` files (see README for using them).
 #   * Vocabulary descriptions and parents for the ICD codes come from suMEDS, using the rules in
-#     `src/MC_MED_MEDS/sumeds_rules.yaml` (see README).
+#     `src/MC_MED_MEDS/sumeds_rules.yaml` (see README). The `sumeds_enrich` post-stage below runs it
+#     as the last step of `meds-extract-run`.
 
 sources:
   dataset_version: "1.0.1"
@@ -57,6 +58,20 @@ sources:
         - numerics.csv
         - meds.csv
         - pmh.csv
+
+etl:
+  # Written to metadata/dataset.json (from https://physionet.org/content/mc-med/1.0.1/).
+  license: PhysioNet Credentialed Health Data License 1.5.0
+  description_uri: https://physionet.org/content/mc-med/1.0.1/
+  # The visit's CSN, which links an event back to the raw tables and the waveforms.
+  raw_source_id_columns: [csn]
+  # After the canonical pipeline, suMEDS (a dependency of this package) fills in the official ICD
+  # titles and parents of metadata/codes.parquet with the rules registered as MC-MED, and records
+  # the enrichment in metadata/dataset.json. A failed enrichment (e.g. without internet access)
+  # leaves codes.parquet as it was and does not fail the run; `suMEDS-enrich OUTPUT_DIR` finishes it
+  # later. Leave it out of a run with `skip_stages=[sumeds_enrich]`.
+  post_stages:
+    - sumeds_enrich: { rules: MC-MED }
 
 _defaults:
   subject_id: $MRN

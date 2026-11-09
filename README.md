@@ -12,15 +12,13 @@ An ETL to extract the MC-MED (Multimodal Clinical Monitoring in the Emergency De
 
 ```bash
 pip install MC-MED-MEDS
-suMEDS-extract spec=MC-MED output_dir=/path/to/output
+meds-extract-run spec=MC-MED output_dir=/path/to/output
 ```
 
-[suMEDS](https://github.com/rvandewater/SumMEDS)' `suMEDS-extract` (installed with this package)
-runs the ETL with `meds-extract-run spec=MC-MED`, then fills the official ICD titles and parents
-into `metadata/codes.parquet` (see
-[Enriching code metadata with suMEDS](#enriching-code-metadata-with-sumeds)). Arguments before a
-`--` go to `meds-extract-run`, and arguments after it go to `suMEDS-enrich`. For the plain ETL, run
-`meds-extract-run spec=MC-MED output_dir=...` with the same arguments.
+This one command runs the ETL and then, as its last step, fills the official ICD titles and parents
+into `metadata/codes.parquet` with [suMEDS](https://github.com/rvandewater/SumMEDS) (installed with
+this package; see [Enriching code metadata with suMEDS](#enriching-code-metadata-with-sumeds)). For
+the plain ETL, add `skip_stages=[sumeds_enrich]`.
 
 Raw data is downloaded automatically per the `sources:` block of the packaged configuration; set any
 required credentials as environment variables (see below). To run against pre-staged raw data
@@ -28,7 +26,8 @@ instead, pass `do_download=false input_dir=/path/to/raw/data`.
 
 The output directory will contain the extracted MEDS dataset (`data/` and `metadata/`, per the
 [MEDS standard](https://medical-event-data-standard.github.io/)), with dataset name and version
-provenance stamped in `metadata/dataset.json` automatically.
+provenance, the license and the dataset's PhysioNet page stamped in `metadata/dataset.json`
+automatically.
 
 ## Dataset access
 
@@ -40,7 +39,7 @@ for the project. Export your PhysioNet credentials before running the ETL:
 ```bash
 export DATASET_DOWNLOAD_USERNAME=... # your PhysioNet username
 export DATASET_DOWNLOAD_PASSWORD=... # and password
-suMEDS-extract spec=MC-MED output_dir=/path/to/output download_dest_dir=/path/to/raw
+meds-extract-run spec=MC-MED output_dir=/path/to/output download_dest_dir=/path/to/raw
 ```
 
 Only the tabular CSVs the ETL reads are downloaded (`visits`, `orders`, `labs`, `rads`,
@@ -126,31 +125,61 @@ ICD vocabulary work lives in [suMEDS](https://github.com/rvandewater/SumMEDS) ra
 ETL. The package ships the rules for it,
 [`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml), registered in
 suMEDS's `sumeds.rules` entry-point group under the same name as the MEDS-Extract spec, `MC-MED`.
-That is how `suMEDS-extract spec=MC-MED` finds them, and `--rules MC-MED` works for any suMEDS
-command. `suMEDS-extract` replaces `metadata/codes.parquet` only once the enriched table is
-complete, and it stays valid MEDS code metadata. By default the ICD data comes from suMEDS's
-ontology packs, fetched from GitHub on first use and cached; no Athena download is needed. suMEDS
-options go after a `--`:
+The spec declares suMEDS's `sumeds_enrich` stage after the canonical pipeline
+(`etl.post_stages`), so `meds-extract-run spec=MC-MED` enriches the finished
+`metadata/codes.parquet` in place, and it stays valid MEDS code metadata. `--rules MC-MED` works
+for any suMEDS command. By default the ICD data comes from suMEDS's ontology packs, fetched from
+GitHub on first use and cached; no Athena download is needed.
+
+**Was a build enriched?** `metadata/dataset.json` records it under `sumeds_enrichment`:
+`"enriched": true`, with the rules, the suMEDS version and the coverage. Enrichment is on by default,
+and a failed enrichment (for example, on a server without internet access) does not fail the ETL:
+`metadata/codes.parquet` is left as the ETL wrote it, `dataset.json` records `"enriched": false`
+with the error, and the exit code is still 0. The warning, with the command that finishes the
+enrichment, is in `$OUTPUT_DIR/.logs/pipeline.log`, not on the console. Running `meds-extract-run`
+again does not retry it (the stage is marked done); enrich the build afterwards, with the same
+rules and options, with:
 
 ```bash
-# Also look codes up in your own OHDSI Athena download:
-suMEDS-extract spec=MC-MED output_dir=/path/to/output -- --athena-csv /path/to/athena
-# Use only already cached packs (no network):
-suMEDS-extract spec=MC-MED output_dir=/path/to/output -- --offline
+suMEDS-enrich /path/to/output
+# Without internet access, from a copy of the sumeds-ontologies packs directory:
+suMEDS-enrich /path/to/output --ontology-source /path/to/sumeds-ontologies/ontologies --offline
 ```
 
-Running it again on an existing output skips the pipeline stages that are already done and
-enriches again. To enrich the `codes.parquet` of an existing build instead:
+Options of the stage are set at run time through `overrides=`; the `++` is needed because the
+overrides reach every stage of the pipeline:
 
 ```bash
-suMEDS-enrich "$OUTPUT_DIR/metadata/codes.parquet" -o "$OUTPUT_DIR/metadata/codes.parquet" --rules MC-MED
+# Skip the enrichment (the plain ETL):
+meds-extract-run spec=MC-MED output_dir=/path/to/output skip_stages=[sumeds_enrich]
+# Make a failed enrichment fail the run (exit code 1) instead of a warning:
+meds-extract-run spec=MC-MED output_dir=/path/to/output "overrides=['++stage_cfg.strict=true']"
+# Use a local copy of the packs (or set SUMEDS_ONTOLOGY_SOURCE=/path/to/packs):
+meds-extract-run spec=MC-MED output_dir=/path/to/output \
+	"overrides=['++stage_cfg.ontology_source=/path/to/sumeds-ontologies/ontologies']"
+# Also look codes up in your own OHDSI Athena download:
+meds-extract-run spec=MC-MED output_dir=/path/to/output "overrides=['++stage_cfg.athena_csv=/path/to/athena']"
+```
+
+**On a cluster whose compute nodes have no internet access**, fill a cache on shared storage once,
+from a login node, then run the ETL offline on the compute nodes with the same cache:
+
+```bash
+export XDG_CACHE_HOME=/shared/project/cache
+# On a login node:
+suMEDS-enrich --prefetch --rules MC-MED
+# On a compute node:
+meds-extract-run spec=MC-MED output_dir=/path/to/output "overrides=['++stage_cfg.offline=true']"
 ```
 
 The rules validate the `ED_DIAGNOSIS//ICD10CM//…`, `ED_DIAGNOSIS//ICD9CM//…`, `PMH//ICD10CM//…` and
 `PMH//ICD9CM//…` codes against suMEDS's versioned ICD-10-CM and ICD-9-CM data (built from the
-CDC/NCHS and CMS files). They add the official title where a code has none, the vocabulary
-ancestors as `parent_codes`, and the nearest ancestor that is itself a code of the same family
-(ED diagnoses and past medical history are linked separately). The same rules work with
+CDC/NCHS and CMS files). They add the official title where a code has none, and the ICD code
+itself and its vocabulary ancestors as `parent_codes`. `parent_names` maps each of those to its
+official title, so a past-medical-history code that keeps its `pmh.csv` description still carries
+the official one. `parent_codes` also gets the nearest ancestor that is itself a code of the same
+family (ED diagnoses and past medical history are linked separately); its description is in its
+own row, so it has no `parent_names` entry. The same rules work with
 `suMEDS … --rules …` to build a privacy-masked code catalog of the output.
 
 ## Summary statistics
@@ -158,7 +187,7 @@ ancestors as `parent_codes`, and the nearest ancestor that is itself a code of t
 [`tests/regression/full_summary_stats.json`](tests/regression/full_summary_stats.json) is a
 [meds_summary_stats](https://github.com/Medical-Event-Data-Standard/meds_summary_stats) fingerprint of
 the MEDS dataset this ETL builds from the full MC-MED 1.0.1 release with
-`suMEDS-extract spec=MC-MED`, so its code-metadata coverage includes the suMEDS enrichment. It covers
+`meds-extract-run spec=MC-MED`, so its code-metadata coverage includes the suMEDS enrichment. It covers
 subject, event and measurement counts, digests of the code vocabulary, per-subject, value and time
 distributions, code-metadata coverage, the splits and the schema. It names no code and reports no
 cell of fewer than 20 subjects and no minimum or maximum, which is what makes it safe to publish.
@@ -194,9 +223,9 @@ generic runner (`meds-extract-run`) does everything else: staged download, the c
 pipeline, and provenance stamping. See the
 [MEDS-Extract documentation](https://github.com/mmcdermott/MEDS_extract) for the MESSY format and
 runner details.
-A second entry point registers
-[`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml) with suMEDS under the same
-name, which is all `suMEDS-extract spec=MC-MED` needs to enrich the output.
+The MESSY file also declares suMEDS's `sumeds_enrich` stage in `etl.post_stages`, and a second
+entry point registers [`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml) with
+suMEDS under the same name, which is all the stage needs to enrich the output.
 
 ## Development
 
@@ -213,8 +242,9 @@ The test suite validates offline that the packaged MESSY file is registered and 
 the full pipeline end to end on a tiny, entirely synthetic dataset with MC-MED's documented column
 layout and the quirks of the real files (`tests/conftest.py`, `tests/test_e2e_synthetic.py`), and
 checks that the packaged suMEDS rules match the codes it writes (`tests/test_sumeds_rules.py`) and
-that `suMEDS-extract spec=MC-MED` enriches them, offline against a tiny synthetic ontology pack
-(`tests/test_run_with_enrichment.py`). No real MC-MED data is used in CI.
+that `meds-extract-run spec=MC-MED` enriches them, offline against a tiny synthetic ontology pack, that a
+failed enrichment keeps the plain output and can be retried, and that `skip_stages=[sumeds_enrich]` gives the
+plain ETL (`tests/test_run_with_enrichment.py`). No real MC-MED data is used in CI.
 
 To release, bump `project.version` in `pyproject.toml` with `uv version --bump minor|patch|major` in a pull
 request and merge it into `main`. The publish workflow then uploads the new version to PyPI (through a

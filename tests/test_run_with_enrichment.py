@@ -1,23 +1,34 @@
-"""`suMEDS-extract spec=MC-MED` runs the ETL and then suMEDS enrichment, offline.
+"""`meds-extract-run spec=MC-MED` runs the ETL and then suMEDS enrichment, offline.
 
-This package registers its rules in suMEDS's `sumeds.rules` entry-point group under the same name
-as its MEDS-Extract spec, so `suMEDS-extract` finds them from `spec=MC-MED` alone. The ontology
-source is a tiny pack repository in suMEDS's `sumeds-ontologies/0.1` layout, built
-here with made-up titles for the synthetic codes of ``conftest.py`` (and their categories), so
-the test reads nothing over the network and does not depend on the published packs.
+The spec declares suMEDS's `sumeds_enrich` stage in `etl.post_stages`, with the rules this package
+registers in suMEDS's `sumeds.rules` entry-point group under the same name, `MC-MED`. The ontology
+source is a tiny pack repository in suMEDS's `sumeds-ontologies/0.1` layout, built here with
+made-up titles for the synthetic codes of ``conftest.py`` (and their categories), and passed to the
+stage at run time as `overrides=['++stage_cfg.ontology_source=DIR']`, so the test reads nothing over
+the network and does not depend on the published packs.
+
+A failed enrichment does not fail the ETL: with an empty pack source, the run keeps the plain
+`codes.parquet`, records the failure in `metadata/dataset.json`, and `suMEDS-enrich OUTPUT` enriches it
+later. `skip_stages=[sumeds_enrich]` (the plain build of ``conftest.py``) gives exactly the ETL without
+the stage.
 """
 
 import csv
 import hashlib
 import io
 import json
+import shutil
 from pathlib import Path
 
 import polars as pl
+import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+import yaml
 from conftest import run_command
-from meds import CodeMetadataSchema
+from meds import CodeMetadataSchema, DatasetMetadataSchema
+
+SPEC_FP = Path(__file__).parents[1] / "src" / "MC_MED_MEDS" / "configs" / "event_configs.yaml"
 
 # vocabulary -> release -> code -> parent (None for a category). PMH//ICD10CM//S72.00XA is
 # deliberately missing (it is not a valid ICD-10-CM code), so it must stay unenriched.
@@ -66,6 +77,16 @@ PACKS = {
 
 def title(vocabulary: str, code: str) -> str:
     return f"Synthetic {vocabulary} title {code}"
+
+
+def parent_names(row: dict) -> dict[str, str]:
+    """A row's `parent_names` map, from each parent code to its name, as a dict.
+
+    suMEDS writes it as a Parquet `map<string, string>`, which Polars 2 reads as a dict and Polars 1 as a list
+    of key/value structs.
+    """
+    names = row["parent_names"] or {}
+    return names if isinstance(names, dict) else {entry["key"]: entry["value"] for entry in names}
 
 
 def _sha256(data: bytes) -> str:
@@ -122,22 +143,42 @@ def ontology_source(tmp_path_factory) -> Path:
     return root
 
 
+def run_etl(output_dir: Path, raw_dir: Path, *, succeed: bool = True, **stage_options: Path | str) -> Path:
+    """`meds-extract-run spec=MC-MED`, passing `stage_options` to the `sumeds_enrich` stage."""
+    argv = [
+        "meds-extract-run",
+        "spec=MC-MED",
+        f"output_dir={output_dir}",
+        "do_download=false",
+        f"input_dir={raw_dir}",
+    ]
+    if stage_options:
+        # Overrides reach every stage of the pipeline, so `++` adds the key where a stage lacks it.
+        overrides = ",".join(f"'++stage_cfg.{name}={value}'" for name, value in stage_options.items())
+        argv.append(f"overrides=[{overrides}]")
+    run_command(argv, succeed=succeed)
+    return output_dir
+
+
+def enrichment_record(output_dir: Path) -> dict:
+    """The `sumeds_enrichment` record of the output's `dataset.json`, which must stay valid MEDS."""
+    metadata = json.loads((output_dir / "metadata" / "dataset.json").read_text())
+    DatasetMetadataSchema.validate(metadata)
+    return metadata["sumeds_enrichment"]
+
+
 @pytest.fixture(scope="session")
 def enriched_output(tmp_path_factory, raw_dir: Path, ontology_source: Path) -> Path:
     output_dir = tmp_path_factory.mktemp("mc_med_enriched") / "MEDS_cohort"
-    run_command(
-        [
-            "suMEDS-extract",
-            "spec=MC-MED",
-            f"output_dir={output_dir}",
-            "do_download=false",
-            f"input_dir={raw_dir}",
-            "--",
-            "--ontology-source",
-            str(ontology_source),
-        ]
-    )
-    return output_dir
+    return run_etl(output_dir, raw_dir, ontology_source=ontology_source)
+
+
+@pytest.fixture(scope="session")
+def soft_failed_output(tmp_path_factory, raw_dir: Path) -> Path:
+    """The ETL with an empty pack source, as on a site that cannot reach the packs."""
+    no_packs = tmp_path_factory.mktemp("no_packs")
+    output_dir = tmp_path_factory.mktemp("mc_med_soft_fail") / "MEDS_cohort"
+    return run_etl(output_dir, raw_dir, ontology_source=no_packs)
 
 
 @pytest.fixture(scope="session")
@@ -147,7 +188,9 @@ def enriched_codes(enriched_output: Path) -> pl.DataFrame:
 
 def test_codes_parquet_is_replaced_by_valid_meds_metadata(enriched_output: Path):
     metadata = enriched_output / "metadata"
-    CodeMetadataSchema.validate(pq.read_table(metadata / "codes.parquet"))
+    codes = metadata / "codes.parquet"
+    CodeMetadataSchema.validate(pq.read_table(codes))
+    assert pq.read_schema(codes).field("parent_names").type == pa.map_(pa.string(), pa.string())
     assert not list(metadata.glob(".*enriched*")), "the temporary enrichment output was left behind"
 
 
@@ -160,19 +203,111 @@ def test_data_matches_the_plain_etl(enriched_output: Path, events: pl.DataFrame)
 def test_icd_codes_get_titles_and_parents(enriched_codes: pl.DataFrame):
     rows = {r["code"]: r for r in enriched_codes.to_dicts()}
 
-    # No description from the ETL: the pack title fills it.
+    # No description from the ETL: the pack title fills it, and every added parent is named.
     ed = rows["ED_DIAGNOSIS//ICD10CM//A00.0"]
     assert ed["description"] == title("ICD10CM", "A00.0")
     assert ed["parent_codes"] == ["ICD10CM//A00.0", "ICD10CM//A00"]
+    assert parent_names(ed) == {
+        "ICD10CM//A00.0": title("ICD10CM", "A00.0"),
+        "ICD10CM//A00": title("ICD10CM", "A00"),
+    }
     assert rows["ED_DIAGNOSIS//ICD9CM//V01.1"]["description"] == title("ICD9CM", "V01.1")
     assert rows["PMH//ICD9CM//401.9"]["description"] == title("ICD9CM", "401.9")  # empty Desc10
-    assert rows["PMH//ICD9CM//V45.81"]["parent_codes"] == ["ICD9CM//V45.81", "ICD9CM//V45.8", "ICD9CM//V45"]
+    v45 = rows["PMH//ICD9CM//V45.81"]
+    assert v45["parent_codes"] == ["ICD9CM//V45.81", "ICD9CM//V45.8", "ICD9CM//V45"]
+    assert parent_names(v45) == {
+        "ICD9CM//V45.81": title("ICD9CM", "V45.81"),
+        "ICD9CM//V45.8": title("ICD9CM", "V45.8"),
+        "ICD9CM//V45": title("ICD9CM", "V45"),
+    }
 
-    # A description from the ETL is kept; only the parents are added.
+    # A description from the ETL is kept; only the parents are added, so the official title of the
+    # code itself is only in `parent_names`.
     pmh = rows["PMH//ICD10CM//Z00.0"]
     assert pmh["description"] == "Synthetic history A"
     assert pmh["parent_codes"] == ["ICD10CM//Z00.0", "ICD10CM//Z00"]
+    assert parent_names(pmh) == {
+        "ICD10CM//Z00.0": title("ICD10CM", "Z00.0"),
+        "ICD10CM//Z00": title("ICD10CM", "Z00"),
+    }
 
     # Codes that are not in the vocabulary, and non-ICD codes, are left alone.
-    assert not rows["PMH//ICD10CM//S72.00XA"]["parent_codes"]
-    assert not rows["ORDER//Lab//P1"]["parent_codes"]
+    for code in ("PMH//ICD10CM//S72.00XA", "ORDER//Lab//P1"):
+        assert not rows[code]["parent_codes"], code
+        assert not parent_names(rows[code]), code
+
+
+def test_dataset_json_records_the_enrichment(enriched_output: Path, enriched_codes: pl.DataFrame):
+    record = enrichment_record(enriched_output)
+    assert record["enriched"] is True
+    assert record["rules"] == "MC-MED"
+    assert record["ontology_source"] == "local"
+    coverage = record["coverage"]
+    assert coverage["codes"] == enriched_codes.height
+    assert coverage["described"][1] > coverage["described"][0]
+    assert coverage["with_parent_codes"][1] > coverage["with_parent_codes"][0]
+
+
+def test_failed_enrichment_keeps_the_plain_etl_output(soft_failed_output: Path, meds_output: Path):
+    codes = soft_failed_output / "metadata" / "codes.parquet"
+    assert codes.read_bytes() == (meds_output / "metadata" / "codes.parquet").read_bytes()
+    record = enrichment_record(soft_failed_output)
+    assert record["enriched"] is False
+    assert record["rules"] == "MC-MED"
+    # The pack directory is not recorded, so the retry asks for it again.
+    assert record["retry"] == "suMEDS-enrich <MEDS_ROOT> --ontology-source <PACKS_DIR>"
+
+
+def test_failed_enrichment_can_be_retried(
+    soft_failed_output: Path, ontology_source: Path, enriched_codes: pl.DataFrame, tmp_path: Path
+):
+    output_dir = shutil.copytree(soft_failed_output, tmp_path / "MEDS_cohort")
+    run_command(["suMEDS-enrich", str(output_dir), "--ontology-source", str(ontology_source)])
+    assert enrichment_record(output_dir)["enriched"] is True
+    assert pl.read_parquet(output_dir / "metadata" / "codes.parquet").equals(enriched_codes)
+
+
+def test_skipping_the_stage_gives_the_plain_etl(meds_output: Path, raw_dir: Path, tmp_path: Path):
+    """`skip_stages=[sumeds_enrich]` writes no record, and the same cohort as the spec without the stage."""
+    assert "sumeds_enrichment" not in json.loads((meds_output / "metadata" / "dataset.json").read_text())
+
+    spec = yaml.safe_load(SPEC_FP.read_text())
+    del spec["etl"]["post_stages"]
+    spec["etl"]["dataset_name"] = "MC-MED"  # a spec given as a path has no registered name
+    spec_fp = tmp_path / "event_configs.yaml"
+    spec_fp.write_text(yaml.safe_dump(spec, sort_keys=False))
+    output_dir = tmp_path / "MEDS_cohort"
+    run_command(
+        [
+            "meds-extract-run",
+            f"spec={spec_fp}",
+            f"output_dir={output_dir}",
+            "do_download=false",
+            f"input_dir={raw_dir}",
+        ]
+    )
+
+    codes = Path("metadata", "codes.parquet")
+    assert pl.read_parquet(output_dir / codes).equals(pl.read_parquet(meds_output / codes))
+    shards = sorted(fp.relative_to(output_dir) for fp in (output_dir / "data").rglob("*.parquet"))
+    assert shards == sorted(fp.relative_to(meds_output) for fp in (meds_output / "data").rglob("*.parquet"))
+    for shard in shards:
+        assert pl.read_parquet(output_dir / shard).equals(pl.read_parquet(meds_output / shard)), shard
+
+
+def test_strict_makes_a_failed_enrichment_fail_the_run(raw_dir: Path, tmp_path: Path):
+    no_packs = tmp_path / "no_packs"
+    no_packs.mkdir()
+    output_dir = run_etl(
+        tmp_path / "MEDS_cohort", raw_dir, succeed=False, ontology_source=no_packs, strict="true"
+    )
+    assert not (output_dir / ".logs" / "sumeds_enrich.done").exists()
+
+
+def test_offline_reads_only_the_cache(raw_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """With `offline` and an empty cache, the default pack source fails at once, without the network."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    output_dir = run_etl(tmp_path / "MEDS_cohort", raw_dir, offline="true")
+    record = enrichment_record(output_dir)
+    assert record["enriched"] is False
+    assert "not in the ontology cache" in record["error"]

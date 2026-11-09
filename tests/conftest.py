@@ -115,17 +115,21 @@ def raw_dir(tmp_path_factory) -> Path:
     return raw_dir
 
 
-def run_command(argv: list[str]) -> None:
-    """Run a CLI, failing the test with its full output if it does not succeed."""
+def run_command(argv: list[str], *, succeed: bool = True) -> None:
+    """Run a CLI, failing the test with its full output if it does not succeed.
+
+    With `succeed=False`, it must fail instead.
+    """
     result = subprocess.run(argv, capture_output=True, text=True)
-    assert result.returncode == 0, (
-        f"{argv[0]} failed with exit code {result.returncode}.\n"
+    assert (result.returncode == 0) is succeed, (
+        f"{argv[0]} exited with code {result.returncode}.\n"
         f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     )
 
 
 @pytest.fixture(scope="session")
 def meds_output(tmp_path_factory, raw_dir: Path) -> Path:
+    """The plain ETL: the spec's `sumeds_enrich` post-stage is skipped (see test_run_with_enrichment.py)."""
     output_dir = tmp_path_factory.mktemp("mc_med") / "MEDS_cohort"
     run_command(
         [
@@ -134,6 +138,7 @@ def meds_output(tmp_path_factory, raw_dir: Path) -> Path:
             f"output_dir={output_dir}",
             "do_download=false",
             f"input_dir={raw_dir}",
+            "skip_stages=[sumeds_enrich]",
         ]
     )
     return output_dir
