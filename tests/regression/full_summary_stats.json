@@ -223,9 +223,9 @@
     }
   },
   "dataset": {
-    "created_at": "2026-11-11T00:28:49.035099+00:00",
+    "created_at": "2026-11-12T00:48:48.420416+00:00",
     "dataset_name": "MC-MED",
-    "dataset_version": "1.0.1:0.1.1",
+    "dataset_version": "1.0.1:0.2.0",
     "description_uri": "https://physionet.org/content/mc-med/1.0.1/",
     "etl_name": "MEDS_transforms",
     "etl_version": "0.7.1",
@@ -252,7 +252,7 @@
         ]
       },
       "enriched": true,
-      "enriched_at": "2026-11-11T00:28:57Z",
+      "enriched_at": "2026-11-12T00:48:57Z",
       "ontology_source": "rvandewater/sumeds-ontologies@v0.2.0",
       "options": {
         "child_codes": false,
@@ -275,7 +275,7 @@
       "data/train/1.parquet": "sha256:c6159a36149c2cba60f2bf39c1221520454ee5f0d5d598f268d23d06c0b6a1d8",
       "data/tuning/0.parquet": "sha256:d4a5c8dcdeb20da6ef26c5684c69742801c5eba8e30cecad6e5a5f25ea2c2e37",
       "metadata/codes.parquet": "sha256:e4b54bc0a34a980efca9115a128254703f712935d61f55bed971f30933b50c45",
-      "metadata/dataset.json": "sha256:8d47136fb55a59bf1771a23b0d593aa973d0c5a538911977311b105950f0bb7f",
+      "metadata/dataset.json": "sha256:005adbf8f2e61381feb4c24f4b86e04ee5217d79610b350e61875076a9c932b9",
       "metadata/subject_splits.parquet": "sha256:ba05e441e882831ef5d962ecee630e6ba724581ea960464c44c10b9900d0cc93"
     },
     "code_metadata": "sha256:afcd363e9fccd4f51d25c9a83b0a7e84b3d9699dd195ad74bf0adbf9e43ef8fe",
@@ -284,12 +284,12 @@
       "digest": "sha256:8036a8d76e9e0aa3cb0dd5e90222fadb04dbcebffd589c246b1e8ce3af4c9e25",
       "n_files": 4
     },
-    "dataset_metadata": "sha256:c4d2ca26c14d2e5e696183f72cd899163d1d23649e6e8cfebd7491afbcff685f",
+    "dataset_metadata": "sha256:4160a25cb1396fb80f059445afb5e935c6c54b641c1c94da8d762a92385ccee5",
     "method": "files",
     "n_files": 7,
     "subject_splits": "sha256:9dfc91f7218aca294b2edfcaf49a302da7fb6a014a8501517496bd7693d4092f"
   },
-  "extracted_at": "2026-11-11T00:29:16.509814",
+  "extracted_at": "2026-11-12T00:48:59.627454",
   "layout": {
     "code_metadata_columns": {
       "code": "String",
