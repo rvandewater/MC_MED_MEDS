@@ -113,11 +113,17 @@ uv version --bump minor
 git commit -am "Release $(uv version --short)"
 ```
 
-When a push to `main` carries a version that has no git tag yet, the `Publish Python distribution to PyPI`
-workflow ([`.github/workflows/python-build.yaml`](.github/workflows/python-build.yaml)) publishes it to PyPI
-as [`MC-MED-MEDS`](https://pypi.org/p/MC-MED-MEDS) and creates the matching tag and GitHub Release (with
-generated notes). Pushes that don't change the version only build the package. Don't create release tags by
-hand; the workflow creates them.
+Merging only builds the package. To publish, tag the merged commit on `main` with the version (no `v` prefix)
+and push the tag:
+
+```bash
+git tag "$(uv version --short)" && git push origin "$(uv version --short)"
+```
+
+The tag push runs the `Publish Python distribution to PyPI` workflow
+([`.github/workflows/python-build.yaml`](.github/workflows/python-build.yaml)). It checks that the tag matches
+`project.version`, publishes the version to PyPI as [`MC-MED-MEDS`](https://pypi.org/p/MC-MED-MEDS), and creates
+the GitHub Release (with generated notes) and uploads the signed distributions to it.
 
 Publishing uses a PyPI [trusted publisher](https://docs.pypi.org/trusted-publishers/), which must be set up
 once before the first release: owner `rvandewater`, repository `MC_MED_MEDS`, workflow `python-build.yaml`,

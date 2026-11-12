@@ -247,8 +247,8 @@ failed enrichment keeps the plain output and can be retried, and that `skip_stag
 plain ETL (`tests/test_run_with_enrichment.py`). No real MC-MED data is used in CI.
 
 To release, bump `project.version` in `pyproject.toml` with `uv version --bump minor|patch|major` in a pull
-request and merge it into `main`. The publish workflow then uploads the new version to PyPI (through a
-[PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/)) and creates its tag and GitHub Release;
+request, merge it into `main`, and push a tag with the new version. The tag push uploads the version to PyPI
+(through a [PyPI trusted publisher](https://docs.pypi.org/trusted-publishers/)) and creates its GitHub Release;
 see [`CONTRIBUTORS.md`](CONTRIBUTORS.md#releasing). Optionally archive releases on
 [Zenodo](https://docs.github.com/en/repositories/archiving-a-github-repository/referencing-and-citing-content)
 for a citable DOI, and update `CITATION.cff` accordingly.
