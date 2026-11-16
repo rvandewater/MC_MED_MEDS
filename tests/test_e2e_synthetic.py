@@ -148,3 +148,37 @@ def test_in_hospital_deaths_are_meds_death(events: pl.DataFrame):
     # Without a Hosp_LOS there is no discharge event; the death falls back to ED departure.
     assert times[301] == datetime(2300, 3, 1, 13, 0)
     assert events.filter(pl.col("code") == "MEDS_BIRTH").is_empty()
+
+
+def test_numeric_codes_carry_their_unit(events: pl.DataFrame, codes: pl.DataFrame):
+    """`unit` in codes.parquet: from `Component_units` for labs, and the unit PhysioNet states for the other
+    numeric codes.
+
+    MEDS-Extract writes it as a list, like every other `_metadata` column.
+    """
+    unit = dict(zip(codes["code"].to_list(), codes["unit"].to_list()))
+    assert unit["LAB//Analyte X//mmol/L"] == ["mmol/L"]
+    assert unit["VITAL//HR//Monitor"] == ["bpm"]
+    assert unit["VITAL//Temp//Chart"] == ["degF"]
+    assert unit["VITAL//SpO2//Monitor"] == ["%"]
+    assert unit["TRIAGE//TEMP//degC"] == ["degC"]
+    assert unit["TRIAGE//HR//bpm"] == ["bpm"]
+    assert unit["AGE"] == ["years"]
+    assert unit["ED_DEPARTURE"] == ["hours"]
+    assert unit["HOSPITAL_DISCHARGE//Home"] == ["days"]
+    # No unit recorded or documented: none given.
+    assert not unit["LAB//Analyte Y//UNK"]
+    assert not unit["VITAL//Pain//Chart"]
+    assert not unit["ORDER//Lab//P1"]
+
+
+def test_unit_guards_drop_no_event(events: pl.DataFrame):
+    """The time-column guards that let the constant codes carry a unit drop no event that has a time."""
+    counts = {
+        c: events.filter(pl.col("code") == c).height for c in ("AGE", "ED_DEPARTURE", "TRIAGE//HR//bpm")
+    }
+    # Five visits; CSN 401 has no departure time.
+    assert counts == {"AGE": 5, "ED_DEPARTURE": 4, "TRIAGE//HR//bpm": 5}
+    # A missing triage value still gives its (valueless) event, as before.
+    temps = events.filter(pl.col("code") == "TRIAGE//TEMP//degC")
+    assert temps.height == 5 and temps["numeric_value"].null_count() == 1

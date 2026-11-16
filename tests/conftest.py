@@ -77,6 +77,7 @@ NUMERICS = """\
 CSN,Source,Measure,Value,Time
 101,Monitor,HR,81,2200-01-01T10:31:00Z
 101,Chart,Temp,98.6,2200-01-01T10:35:00Z
+101,Chart,Pain,3,2200-01-01T10:40:00Z
 102,Monitor,SpO2,94,2200-01-05T18:15:00Z
 """
 

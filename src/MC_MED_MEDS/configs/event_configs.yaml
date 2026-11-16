@@ -37,6 +37,9 @@
 #     `waveform_summary.csv`, the next-visit outcome columns of `visits.csv`
 #     (`Hours_to_next_visit`, `Dispo_class_next_visit` — recoverable from the next visit's own
 #     events), and the provided `split_*.csv` files (see README for using them).
+#   * Every code with a numeric value whose unit is known carries it as `unit` in
+#     metadata/codes.parquet (codes unchanged): labs from `Component_units`, the others as literals
+#     stated by the public PhysioNet page (see "UNITS" below and the README).
 #   * Vocabulary descriptions and parents for the ICD codes come from suMEDS, using the rules in
 #     `src/MC_MED_MEDS/sumeds_rules.yaml` (see README). The `sumeds_enrich` post-stage below runs it
 #     as the last step of `meds-extract-run`.
@@ -76,6 +79,21 @@ etl:
 _defaults:
   subject_id: $MRN
 
+# UNITS. `unit` in codes.parquet gives downstream tools a code's unit in one place; no code, value or
+# time changes. Labs take theirs from the data (`Component_units`). The others have no unit column,
+# so their unit is a literal, each one the unit the MC-MED 1.0.1 PhysioNet page
+# (https://physionet.org/content/mc-med/1.0.1/, publicly readable; the files themselves are under the
+# PhysioNet Credentialed Health Data License 1.5.0) states for that column or measure: Table 1
+# (visits) for age, triage vitals and lengths of stay, Table 7 (numerics) for the `Measure`s. Only
+# the unit is taken, written in the short form the triage codes already use. Measures the page gives
+# no unit for (Perf, Pain, 1min_HRV, 5min_HRV) get none.
+#
+# MEDS-Extract 0.8 attaches `_metadata` only to a code whose expression references a source column
+# (mmcdermott/MEDS_extract#166), so the constant codes that get a unit (AGE, ED_DEPARTURE and the
+# triage vitals) are guarded by their own time column (`if $Arrival_time == $Arrival_time`, and
+# `$Departure_time` for ED_DEPARTURE): false only where that column is null, and such a row has no
+# time and produces no event anyway. The guard changes no event.
+
 # ------------------------------------------------------------------------------------------------
 # visits.csv — one row per ED visit (MRN, CSN): demographics, triage, ED course, dispositions.
 # ------------------------------------------------------------------------------------------------
@@ -95,10 +113,14 @@ visits:
     time: &arrival_time 'coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f")'
     csn: $CSN
   age:
-    code: AGE
+    code: "'AGE' if $Arrival_time == $Arrival_time"
     time: *arrival_time
     numeric_value: $Age::?float64
     csn: $CSN
+    _metadata:
+      _self:
+        # PhysioNet, Table 1: "Patient age in years".
+        unit: '"years"'
   payor:
     # MC-MED records only Medicare and Medicaid; the ~60% of visits with neither are `PAYOR//UNK`.
     code: 'f"PAYOR//{$Payor_class if len_chars($Payor_class) > 0 else ''UNK''}"'
@@ -144,35 +166,59 @@ visits:
     time: *arrival_time
     csn: $CSN
   triage_temp:
-    code: '"TRIAGE//TEMP//degC"'
+    code: '"TRIAGE//TEMP//degC" if $Arrival_time == $Arrival_time'
     time: *arrival_time
     numeric_value: $Triage_Temp::?float64
     csn: $CSN
+    _metadata:
+      _self:
+        # PhysioNet, Table 1: "Temperature at triage (C)".
+        unit: '"degC"'
   triage_hr:
-    code: '"TRIAGE//HR//bpm"'
+    code: '"TRIAGE//HR//bpm" if $Arrival_time == $Arrival_time'
     time: *arrival_time
     numeric_value: $Triage_HR::?float64
     csn: $CSN
+    _metadata:
+      _self:
+        # PhysioNet, Table 1: "Heart rate at triage (bpm)".
+        unit: '"bpm"'
   triage_rr:
-    code: '"TRIAGE//RR//breaths/min"'
+    code: '"TRIAGE//RR//breaths/min" if $Arrival_time == $Arrival_time'
     time: *arrival_time
     numeric_value: $Triage_RR::?float64
     csn: $CSN
+    _metadata:
+      _self:
+        # PhysioNet, Table 1: "Respiratory rate at triage (breaths per min.)".
+        unit: '"breaths/min"'
   triage_spo2:
-    code: '"TRIAGE//SPO2//%"'
+    code: '"TRIAGE//SPO2//%" if $Arrival_time == $Arrival_time'
     time: *arrival_time
     numeric_value: $Triage_SpO2::?float64
     csn: $CSN
+    _metadata:
+      _self:
+        # PhysioNet, Table 1: "Oxygen saturation at triage (%)".
+        unit: '"%"'
   triage_sbp:
-    code: '"TRIAGE//SBP//mmHg"'
+    code: '"TRIAGE//SBP//mmHg" if $Arrival_time == $Arrival_time'
     time: *arrival_time
     numeric_value: $Triage_SBP::?float64
     csn: $CSN
+    _metadata:
+      _self:
+        # PhysioNet, Table 1: "Systolic blood pressure at triage (mmHg)".
+        unit: '"mmHg"'
   triage_dbp:
-    code: '"TRIAGE//DBP//mmHg"'
+    code: '"TRIAGE//DBP//mmHg" if $Arrival_time == $Arrival_time'
     time: *arrival_time
     numeric_value: $Triage_DBP::?float64
     csn: $CSN
+    _metadata:
+      _self:
+        # PhysioNet, Table 1: "Diastolic blood pressure at triage (mmHg)".
+        unit: '"mmHg"'
 
   ed_roomed:
     code: ED_ROOMED
@@ -188,11 +234,16 @@ visits:
     time: 'coalesce($Admit_time::?"%Y-%m-%dT%H:%M:%SZ", $Admit_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Admit_time::?"%Y-%m-%dT%H:%M:%S", $Admit_time::?"%Y-%m-%d %H:%M:%S", $Admit_time::?"%Y-%m-%d %H:%M:%S%.f")'
     csn: $CSN
   ed_departure:
-    # numeric_value: ED length of stay in hours.
-    code: ED_DEPARTURE
+    # numeric_value: ED length of stay in hours. The guard is the event's own time column, as for
+    # AGE (see UNITS above).
+    code: "'ED_DEPARTURE' if $Departure_time == $Departure_time"
     time: 'coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f")'
     numeric_value: $ED_LOS::?float64
     csn: $CSN
+    _metadata:
+      _self:
+        # PhysioNet, Table 1: "Length of ED stay, hours".
+        unit: '"hours"'
 
   # ED diagnoses, recorded at ED departure (at the disposition decision for the ~0.2% of visits
   # without a departure time). One event per code: Dx_ICD10 / Dx_ICD9 hold up to 4, joined by ", ".
@@ -249,6 +300,10 @@ visits:
       else coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f") + ($Hosp_LOS::?float64 * 86400)::?int64::seconds
     numeric_value: $Hosp_LOS::?float64
     csn: $CSN
+    _metadata:
+      _self:
+        # PhysioNet, Table 1: "Length of hospital stay (including post-ED admission), days".
+        unit: '"days"'
 
   death:
     # In-hospital death: a DC_dispo starting with "Expired" (MC-MED has no other death source, so
@@ -310,6 +365,10 @@ labs:
     numeric_value: $Component_value::?float64
     text_value: $Component_result
     csn: $CSN
+    # The unit as recorded, already the code's last segment; a code without one (`//UNK`) gets none.
+    _metadata:
+      _self:
+        unit: $Component_units if len_chars($Component_units) > 0
 
 # ------------------------------------------------------------------------------------------------
 # rads.csv — imaging studies with de-identified impression text (CSN only → join visits).
@@ -342,6 +401,21 @@ numerics:
     time: 'coalesce($Time::?"%Y-%m-%dT%H:%M:%SZ", $Time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Time::?"%Y-%m-%dT%H:%M:%S", $Time::?"%Y-%m-%d %H:%M:%S", $Time::?"%Y-%m-%d %H:%M:%S%.f")'
     numeric_value: $Value::?float64
     csn: $CSN
+    # Each measure's unit as PhysioNet, Table 7 states it ("Heart rate, heartbeats per minute",
+    # "Respiratory rate, breaths per minute", "Oxygen saturation by pulse oximetry, %", "... blood
+    # pressure, mmHg", "Body temperature, degrees Fahrenheit", "Flow rate of supplemental oxygen,
+    # liters per minute"). Perf, Pain and the HRV measures have no stated unit and get none.
+    _metadata:
+      _self:
+        unit: >-
+          "bpm" if $Measure == "HR"
+          else "breaths/min" if $Measure == "RR"
+          else "%" if $Measure == "SpO2"
+          else "mmHg" if $Measure == "SBP"
+          else "mmHg" if $Measure == "DBP"
+          else "mmHg" if $Measure == "MAP"
+          else "degF" if $Measure == "Temp"
+          else "L/min" if $Measure == "LPM_O2"
 
 # ------------------------------------------------------------------------------------------------
 # pmh.csv — past medical history diagnoses (MRN). pmh.csv writes ICD codes without the dot and

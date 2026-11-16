@@ -75,6 +75,16 @@ Code descriptions (order names, medication names, PMH descriptions) are written 
 becomes `UNK` rather than dropping the row. The CSVs write these as quoted empty strings (`""`),
 which the config treats the same as null.
 
+Numeric codes also carry their `unit` in `metadata/codes.parquet` (a list, like every other
+`_metadata` column), so downstream tools read a code's unit from one place; no code changes:
+
+| Codes                                            | `unit` from                                                                                                                                                                                                                                               |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LAB//...`                                       | `Component_units` as recorded (already the code's last segment); none for `//UNK`                                                                                                                                                                         |
+| `VITAL//{Measure}//...`                          | the unit the [PhysioNet page](https://physionet.org/content/mc-med/1.0.1/) (Table 7) states per measure: `bpm`, `breaths/min`, `%`, `mmHg` (SBP, DBP, MAP), `degF`, `L/min` (LPM_O2); none for Perf, Pain and the HRV measures, which have no stated unit |
+| `TRIAGE//{HR,RR,SPO2,SBP,DBP,TEMP}//{unit}`      | the unit PhysioNet (Table 1) states, as the code already spells it                                                                                                                                                                                        |
+| `AGE`, `ED_DEPARTURE`, `HOSPITAL_DISCHARGE//...` | PhysioNet (Table 1): `years`, `hours` (`ED_LOS`), `days` (`Hosp_LOS`)                                                                                                                                                                                     |
+
 ### Modelling choices and caveats
 
 - **Timestamps** are shifted per patient into 2150–2350 by the dataset authors. They are parsed

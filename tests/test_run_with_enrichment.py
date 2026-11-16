@@ -200,6 +200,11 @@ def test_data_matches_the_plain_etl(enriched_output: Path, events: pl.DataFrame)
     assert enriched_events.sort(key).select(key).equals(events.sort(key).select(key))
 
 
+def test_enrichment_keeps_the_units(enriched_codes: pl.DataFrame, codes: pl.DataFrame):
+    key = ["code", "unit"]
+    assert enriched_codes.select(key).sort("code").equals(codes.select(key).sort("code"))
+
+
 def test_icd_codes_get_titles_and_parents(enriched_codes: pl.DataFrame):
     rows = {r["code"]: r for r in enriched_codes.to_dicts()}
 
