@@ -248,8 +248,7 @@ def test_dataset_json_records_the_enrichment(enriched_output: Path, enriched_cod
     assert record["rules"] == "MC-MED"
     assert record["ontology_source"] == "local"
     coverage = record["coverage"]
-    # The stem row of the unit siblings (`LAB//Analyte X`) is added after the enrichment.
-    assert coverage["codes"] == enriched_codes.height - 1
+    assert coverage["codes"] == enriched_codes.height  # the stem row included
     assert coverage["described"][1] > coverage["described"][0]
     assert coverage["with_parent_codes"][1] > coverage["with_parent_codes"][0]
 
@@ -270,11 +269,7 @@ def test_failed_enrichment_can_be_retried(
     output_dir = shutil.copytree(soft_failed_output, tmp_path / "MEDS_cohort")
     run_command(["suMEDS-enrich", str(output_dir), "--ontology-source", str(ontology_source)])
     assert enrichment_record(output_dir)["enriched"] is True
-    # Only `parent_names` differs: a retry sees the unit siblings' stem parent, which the build adds
-    # after the enrichment, and gives those codes an empty map instead of null.
-    retried = pl.read_parquet(output_dir / "metadata" / "codes.parquet")
-    same = [c for c in enriched_codes.columns if c != "parent_names"]
-    assert retried.select(same).equals(enriched_codes.select(same))
+    assert pl.read_parquet(output_dir / "metadata" / "codes.parquet").equals(enriched_codes)
 
 
 def test_skipping_the_stage_gives_the_plain_etl(meds_output: Path, raw_dir: Path, tmp_path: Path):

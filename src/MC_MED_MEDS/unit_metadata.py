@@ -2,12 +2,14 @@
 
 MEDS-Extract writes every ``_metadata`` column as ``List(String)``, the distinct values seen for a code.
 The ``unit`` of a code is meant to be a single value, the unit of its numeric values as recorded (MEDS
-does not standardise this column), so this post-stage turns the list into a nullable String::
+does not standardise this column), so this post-stage turns the list into a nullable String. It runs
+first among the post-stages, so that ``sumeds_enrich`` sees (and its coverage counts) the final codes,
+and a later ``suMEDS-enrich`` retry gives the same result as the build::
 
     etl:
       post_stages:
-        - sumeds_enrich: {rules: MC-MED}
         - mc_med_collapse_unit_metadata
+        - sumeds_enrich: {rules: MC-MED}
 
 Each list is stripped of surrounding whitespace, null and empty entries are dropped, and the distinct
 values remain: none gives null, one gives that unit. A code with more than one unit is an error, not a
@@ -295,8 +297,8 @@ def collapse_unit_metadata(
     Raises:
         MultipleUnitsError: if a code has more than one unit; nothing is written then.
 
-    Only ``unit`` and ``parent_codes`` are replaced and stem rows added; every column keeps its Arrow
-    type (suMEDS's ``parent_names`` map, for one), and a file sorted by code stays sorted. The result
+    Only ``unit`` (written as Arrow ``large_string``) and ``parent_codes`` are replaced and stem rows
+    added; every other column keeps its Arrow type, and a file sorted by code stays sorted. The result
     is validated against the MEDS code-metadata schema and written atomically.
     """
     codes_fp = Path(codes_fp)
@@ -311,12 +313,9 @@ def collapse_unit_metadata(
         counts.update(described)
         codes, counts["sibling_groups"], counts["sibling_parents"] = add_unit_sibling_parents(codes)
         counts["units"] = int(codes[UNIT_COLUMN].is_not_null().sum())
-        unit_type = table.schema.field(UNIT_COLUMN).type
-        is_string = pa.types.is_string(unit_type) or pa.types.is_large_string(unit_type)
-        if not is_string or counts["description_units_filled"]:
-            table = table.set_column(
-                table.column_names.index(UNIT_COLUMN), UNIT_COLUMN, codes[UNIT_COLUMN].to_arrow()
-            )
+        # Arrow `large_string`, as suMEDS writes it back, so a retried enrichment changes no type.
+        unit = codes[UNIT_COLUMN].to_arrow().cast(pa.large_string())
+        table = table.set_column(table.column_names.index(UNIT_COLUMN), UNIT_COLUMN, unit)
         if counts["sibling_parents"]:
             parents = codes["parent_codes"].to_arrow().cast(pa.list_(pa.string()))
             if "parent_codes" in table.column_names:

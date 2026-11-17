@@ -15,10 +15,10 @@ pip install MC-MED-MEDS
 meds-extract-run spec=MC-MED output_dir=/path/to/output
 ```
 
-This one command runs the ETL, then fills the official ICD titles and parents into
-`metadata/codes.parquet` with [suMEDS](https://github.com/rvandewater/SumMEDS) (installed with this
-package; see [Enriching code metadata with suMEDS](#enriching-code-metadata-with-sumeds)), and as its
-last step makes each code's `unit` one String (see [Units](#units)). For the ETL without suMEDS, add
+This one command runs the ETL, makes each code's `unit` one String (see [Units](#units)), and then, as
+its last step, fills the official ICD titles and parents into `metadata/codes.parquet` with
+[suMEDS](https://github.com/rvandewater/SumMEDS) (installed with this package; see
+[Enriching code metadata with suMEDS](#enriching-code-metadata-with-sumeds)). For the ETL without suMEDS, add
 `skip_stages=[sumeds_enrich]`.
 
 Raw data is downloaded automatically per the `sources:` block of the packaged configuration; set any
@@ -89,7 +89,7 @@ code (MEDS does not standardise this column). No code changes:
 | `TRIAGE//{HR,RR,SPO2,SBP,DBP,TEMP}//{unit}`      | the unit PhysioNet (Table 1) states, as the code already spells it                                                                                                                                                                                        |
 | `AGE`, `ED_DEPARTURE`, `HOSPITAL_DISCHARGE//...` | PhysioNet (Table 1): `years`, `hours` (`ED_LOS`), `days` (`Hosp_LOS`)                                                                                                                                                                                     |
 
-MEDS-Extract writes `_metadata` columns as lists of the values seen. The last post-stage,
+MEDS-Extract writes `_metadata` columns as lists of the values seen. The first post-stage,
 `mc_med_collapse_unit_metadata` ([`src/MC_MED_MEDS/unit_metadata.py`](src/MC_MED_MEDS/unit_metadata.py)),
 turns `unit` into one String and fails if a code has more than one unit. No MC-MED code does: lab
 units are part of the lab code, and every literal is fixed per code. The same stage links **unit

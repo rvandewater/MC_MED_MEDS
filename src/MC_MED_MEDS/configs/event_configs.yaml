@@ -75,11 +75,11 @@ etl:
   # leaves codes.parquet as it was and does not fail the run; `suMEDS-enrich OUTPUT_DIR` finishes it
   # later. Leave it out of a run with `skip_stages=[sumeds_enrich]`.
   post_stages:
-    - sumeds_enrich: { rules: MC-MED }
     # Turns the `unit` list MEDS-Extract writes into one String per code (failing if a code has more
     # than one unit) and gives unit-sibling codes their code without the unit as a parent code
-    # (MC_MED_MEDS.unit_metadata). Runs last, also with `skip_stages=[sumeds_enrich]`.
+    # (MC_MED_MEDS.unit_metadata). First, so that suMEDS enriches the final set of codes.
     - mc_med_collapse_unit_metadata
+    - sumeds_enrich: { rules: MC-MED }
 
 _defaults:
   subject_id: $MRN
