@@ -39,7 +39,8 @@
 #     events), and the provided `split_*.csv` files (see README for using them).
 #   * Every code with a numeric value whose unit is known carries it as `unit` in
 #     metadata/codes.parquet (codes unchanged): labs from `Component_units`, the others as literals
-#     stated by the public PhysioNet page (see "UNITS" below and the README).
+#     stated by the public PhysioNet page (see "UNITS" below and the README). It is one String per
+#     code, made so by the `mc_med_collapse_unit_metadata` post-stage.
 #   * Vocabulary descriptions and parents for the ICD codes come from suMEDS, using the rules in
 #     `src/MC_MED_MEDS/sumeds_rules.yaml` (see README). The `sumeds_enrich` post-stage below runs it
 #     as the last step of `meds-extract-run`.
@@ -75,6 +76,10 @@ etl:
   # later. Leave it out of a run with `skip_stages=[sumeds_enrich]`.
   post_stages:
     - sumeds_enrich: { rules: MC-MED }
+    # Turns the `unit` list MEDS-Extract writes into one String per code (failing if a code has more
+    # than one unit) and gives unit-sibling codes their code without the unit as a parent code
+    # (MC_MED_MEDS.unit_metadata). Runs last, also with `skip_stages=[sumeds_enrich]`.
+    - mc_med_collapse_unit_metadata
 
 _defaults:
   subject_id: $MRN

@@ -37,6 +37,7 @@ def test_events(events: pl.DataFrame):
         "ORDER//Lab//P1",
         "MEDICATION_ADMINISTRATION//P2",
         "LAB//Analyte X//mmol/L",
+        "LAB//Analyte X//umol/L",
         "LAB//Analyte Y//UNK",
         "RADIOLOGY//Synthetic study",
         "VITAL//HR//Monitor",
@@ -152,24 +153,36 @@ def test_in_hospital_deaths_are_meds_death(events: pl.DataFrame):
 
 def test_numeric_codes_carry_their_unit(events: pl.DataFrame, codes: pl.DataFrame):
     """`unit` in codes.parquet: from `Component_units` for labs, and the unit PhysioNet states for the other
-    numeric codes.
-
-    MEDS-Extract writes it as a list, like every other `_metadata` column.
-    """
+    numeric codes, one String per code (the `mc_med_collapse_unit_metadata` post-stage)."""
+    assert codes["unit"].dtype == pl.String
     unit = dict(zip(codes["code"].to_list(), codes["unit"].to_list()))
-    assert unit["LAB//Analyte X//mmol/L"] == ["mmol/L"]
-    assert unit["VITAL//HR//Monitor"] == ["bpm"]
-    assert unit["VITAL//Temp//Chart"] == ["degF"]
-    assert unit["VITAL//SpO2//Monitor"] == ["%"]
-    assert unit["TRIAGE//TEMP//degC"] == ["degC"]
-    assert unit["TRIAGE//HR//bpm"] == ["bpm"]
-    assert unit["AGE"] == ["years"]
-    assert unit["ED_DEPARTURE"] == ["hours"]
-    assert unit["HOSPITAL_DISCHARGE//Home"] == ["days"]
+    assert unit["LAB//Analyte X//mmol/L"] == "mmol/L"
+    assert unit["VITAL//HR//Monitor"] == "bpm"
+    assert unit["VITAL//Temp//Chart"] == "degF"
+    assert unit["VITAL//SpO2//Monitor"] == "%"
+    assert unit["TRIAGE//TEMP//degC"] == "degC"
+    assert unit["TRIAGE//HR//bpm"] == "bpm"
+    assert unit["AGE"] == "years"
+    assert unit["ED_DEPARTURE"] == "hours"
+    assert unit["HOSPITAL_DISCHARGE//Home"] == "days"
     # No unit recorded or documented: none given.
-    assert not unit["LAB//Analyte Y//UNK"]
-    assert not unit["VITAL//Pain//Chart"]
-    assert not unit["ORDER//Lab//P1"]
+    assert unit["LAB//Analyte Y//UNK"] is None
+    assert unit["VITAL//Pain//Chart"] is None
+    assert unit["ORDER//Lab//P1"] is None
+
+
+def test_lab_unit_siblings_get_their_stem(events: pl.DataFrame, codes: pl.DataFrame):
+    """Analyte X is reported in two units: both codes get `LAB//Analyte X` as a parent, and the stem gets
+    a codes.parquet row without a unit (and without events); a lone lab code gets neither."""
+    rows = {r["code"]: r for r in codes.to_dicts()}
+    assert rows["LAB//Analyte X//mmol/L"]["parent_codes"] == ["LAB//Analyte X"]
+    assert rows["LAB//Analyte X//umol/L"]["parent_codes"] == ["LAB//Analyte X"]
+    assert rows["LAB//Analyte X"]["unit"] is None
+    assert events.filter(pl.col("code") == "LAB//Analyte X").is_empty()
+    assert not rows["LAB//Analyte Y//UNK"]["parent_codes"]
+    assert "LAB//Analyte Y" not in rows
+    # Triage vitals end with their unit but have no sibling.
+    assert not rows["TRIAGE//HR//bpm"]["parent_codes"]
 
 
 def test_unit_guards_drop_no_event(events: pl.DataFrame):

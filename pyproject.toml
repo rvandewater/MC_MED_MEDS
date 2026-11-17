@@ -55,6 +55,10 @@ MC_MED_MEDS = ["**/__pycache__/*", "**/*.pyc", "**/.DS_Store"]
 [project.entry-points."sumeds.rules"]
 "MC-MED" = "MC_MED_MEDS:sumeds_rules.yaml"
 
+# The post-stage that makes each code's `unit` one String and links unit siblings (`etl.post_stages`).
+[project.entry-points."MEDS_transforms.stages"]
+mc_med_collapse_unit_metadata = "MC_MED_MEDS.unit_metadata:main"
+
 [project.urls]
 Homepage = "https://github.com/rvandewater/MC_MED_MEDS"
 Issues = "https://github.com/rvandewater/MC_MED_MEDS/issues"
