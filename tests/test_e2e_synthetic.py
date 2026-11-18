@@ -160,7 +160,7 @@ def test_numeric_codes_carry_their_unit(events: pl.DataFrame, codes: pl.DataFram
     assert unit["VITAL//HR//Monitor"] == "bpm"
     assert unit["VITAL//Temp//Chart"] == "degF"
     assert unit["VITAL//SpO2//Monitor"] == "%"
-    assert unit["TRIAGE//TEMP//degC"] == "degC"
+    assert unit["TRIAGE//TEMP//degC"] == "celsius"
     assert unit["TRIAGE//HR//bpm"] == "bpm"
     assert unit["AGE"] == "years"
     assert unit["ED_DEPARTURE"] == "hours"

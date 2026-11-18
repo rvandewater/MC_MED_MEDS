@@ -178,7 +178,7 @@ visits:
     _metadata:
       _self:
         # PhysioNet, Table 1: "Temperature at triage (C)".
-        unit: '"degC"'
+        unit: '"celsius"'
   triage_hr:
     code: '"TRIAGE//HR//bpm" if $Arrival_time == $Arrival_time'
     time: *arrival_time
