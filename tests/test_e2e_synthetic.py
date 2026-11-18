@@ -153,7 +153,7 @@ def test_in_hospital_deaths_are_meds_death(events: pl.DataFrame):
 
 def test_numeric_codes_carry_their_unit(events: pl.DataFrame, codes: pl.DataFrame):
     """`unit` in codes.parquet: from `Component_units` for labs, and the unit PhysioNet states for the other
-    numeric codes, one String per code (the `mc_med_collapse_unit_metadata` post-stage)."""
+    numeric codes, one String per code (as MEDS-Extract >= 0.9 writes it)."""
     assert codes["unit"].dtype == pl.String
     unit = dict(zip(codes["code"].to_list(), codes["unit"].to_list()))
     assert unit["LAB//Analyte X//mmol/L"] == "mmol/L"

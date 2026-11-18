@@ -1,5 +1,5 @@
-"""The ``mc_med_collapse_unit_metadata`` stage: one String ``unit`` per code in ``codes.parquet``, and unit
-siblings linked by their stem in ``parent_codes``."""
+"""The ``mc_med_unit_metadata`` stage: unit siblings linked by their stem in ``parent_codes``, and units
+stated in descriptions, in ``codes.parquet``."""
 
 import doctest
 import re
@@ -7,15 +7,10 @@ import re
 import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pytest
 from meds import CodeMetadataSchema
 
 from MC_MED_MEDS import unit_metadata
-from MC_MED_MEDS.unit_metadata import (
-    DESCRIPTION_UNIT_PATTERN,
-    MultipleUnitsError,
-    collapse_unit_metadata,
-)
+from MC_MED_MEDS.unit_metadata import DESCRIPTION_UNIT_PATTERN, complete_unit_metadata
 
 CORE_COUNTS = ("units", "sibling_groups", "sibling_parents", "stem_rows")
 
@@ -37,65 +32,42 @@ def write_codes(fp, units, dtype=None):
     codes = [f"LAB//{i}" for i in range(len(units))]
     df = pl.DataFrame(
         {"code": codes, "description": [None] * len(units), "unit": units},
-        schema={"code": pl.String, "description": pl.String, "unit": dtype or pl.List(pl.String)},
+        schema={"code": pl.String, "description": pl.String, "unit": dtype or pl.String},
     )
     write_meds_parquet(df, fp)
     return codes
 
 
-def test_lists_become_one_string_per_code(tmp_path):
+def test_unit_is_kept_as_recorded_and_written_as_large_string(tmp_path):
     fp = tmp_path / "codes.parquet"
-    write_codes(
-        fp,
-        [
-            ["mg/dL"],  # one value
-            ["mmol/L", "mmol/L"],  # duplicates
-            [" %", "% ", "", "  "],  # blanks and surrounding whitespace
-            [None],  # only a null entry
-            [],  # empty
-            None,  # null list
-            ["Geen"],  # kept as recorded, not normalised
-        ],
-    )
-    assert core_counts(collapse_unit_metadata(fp)) == {
-        "units": 4,
+    write_codes(fp, ["mg/dL", None, "Geen"])  # `Geen` is kept as recorded, not normalised
+    assert core_counts(complete_unit_metadata(fp)) == {
+        "units": 2,
         "sibling_groups": 0,
         "sibling_parents": 0,
         "stem_rows": 0,
     }
     table = pq.read_table(fp)
     CodeMetadataSchema.validate(table)
-    assert pl.from_arrow(table)["unit"].dtype == pl.String
-    assert table.column("unit").to_pylist() == ["mg/dL", "mmol/L", "%", None, None, None, "Geen"]
-
-
-def test_several_units_are_an_error_and_nothing_is_written(tmp_path):
-    fp = tmp_path / "codes.parquet"
-    codes = write_codes(fp, [["mg", "g"], ["mg"], *(["mL", "L"] for _ in range(6))])
-    before = fp.read_bytes()
-    with pytest.raises(MultipleUnitsError, match="put the unit in the code") as error:
-        collapse_unit_metadata(fp)
-    assert error.value.n_codes == 7
-    assert error.value.examples == [codes[0], *codes[2:6]]
-    assert "7 codes" in str(error.value)
-    assert fp.read_bytes() == before
+    assert table.schema.field("unit").type == pa.large_string()
+    assert table.column("unit").to_pylist() == ["mg/dL", None, "Geen"]
 
 
 def test_a_string_unit_passes_through(tmp_path):
     fp = tmp_path / "codes.parquet"
-    write_codes(fp, ["mg", None, " %"], dtype=pl.String)
-    assert collapse_unit_metadata(fp)["units"] == 2
+    write_codes(fp, ["mg", None, " %"])
+    assert complete_unit_metadata(fp)["units"] == 2
     assert pl.read_parquet(fp)["unit"].to_list() == ["mg", None, " %"]
     # Idempotent: a second run changes nothing.
     before = fp.read_bytes()
-    collapse_unit_metadata(fp)
+    complete_unit_metadata(fp)
     assert fp.read_bytes() == before
 
 
 def test_no_unit_column_is_left_alone(tmp_path):
     fp = tmp_path / "codes.parquet"
     write_meds_parquet(pl.DataFrame({"code": ["A"], "description": ["a"]}), fp)
-    assert core_counts(collapse_unit_metadata(fp)) == {
+    assert core_counts(complete_unit_metadata(fp)) == {
         "units": 0,
         "sibling_groups": 0,
         "sibling_parents": 0,
@@ -129,13 +101,13 @@ def test_unit_siblings_get_their_stem_as_parent_and_a_stem_row(tmp_path):
                 "Hb (molar)",
             ],
             "code_template": ["t"] * 7,
-            "unit": [["mmol/L"], ["mEq/L"], None, ["mmol/L"], ["bpm"], ["g/dL"], [" mmol/L"]],
+            "unit": ["mmol/L", "mEq/L", None, "mmol/L", "bpm", "g/dL", "mmol/L"],
             "parent_codes": [None, None, None, None, None, ["LOINC//718-7", "X//1"], ["LOINC//718-7"]],
         },
     )
     write_meds_parquet(df, fp)
     expected = {"units": 6, "sibling_groups": 2, "sibling_parents": 4, "stem_rows": 2}
-    assert core_counts(collapse_unit_metadata(fp)) == expected
+    assert core_counts(complete_unit_metadata(fp)) == expected
     table = pq.read_table(fp)
     CodeMetadataSchema.validate(table)
     assert table.schema.field("parent_codes").type == pa.list_(pa.string())
@@ -163,7 +135,7 @@ def test_unit_siblings_get_their_stem_as_parent_and_a_stem_row(tmp_path):
     assert rows["LAB//Hb"]["unit"] is None
     # Idempotent: a second run adds no parent and no row.
     before = pq.read_table(fp)
-    assert core_counts(collapse_unit_metadata(fp)) == {**expected, "sibling_parents": 0, "stem_rows": 0}
+    assert core_counts(complete_unit_metadata(fp)) == {**expected, "sibling_parents": 0, "stem_rows": 0}
     assert pq.read_table(fp).equals(before)
 
 
@@ -173,7 +145,7 @@ def test_an_existing_stem_row_is_left_unchanged_and_sorting_kept(tmp_path):
         {
             "code": ["A//x//g", "A//x//mg", "B", "B//y//L", "B//y//mL", "C"],
             "description": ["x", "x", "b", "y", "y", "c"],
-            "unit": [["g"], ["mg"], None, ["L"], ["mL"], None],
+            "unit": ["g", "mg", None, "L", "mL", None],
             "parent_codes": [None, None, ["V//1"], None, None, None],
         }
     )
@@ -186,7 +158,7 @@ def test_an_existing_stem_row_is_left_unchanged_and_sorting_kept(tmp_path):
         ).sort("code"),
         fp,
     )
-    assert collapse_unit_metadata(fp)["stem_rows"] == 1
+    assert complete_unit_metadata(fp)["stem_rows"] == 1
     rows = pq.read_table(fp).to_pylist()
     assert [r["code"] for r in rows] == [
         "A//x",
@@ -203,14 +175,14 @@ def test_an_existing_stem_row_is_left_unchanged_and_sorting_kept(tmp_path):
 
 def test_parent_codes_is_created_for_siblings(tmp_path):
     fp = tmp_path / "codes.parquet"
-    write_codes(fp, [["mg"], ["g"]])  # LAB//0 and LAB//1: different stems, so no parent column needed
-    collapse_unit_metadata(fp)
+    write_codes(fp, ["mg", "g"])  # LAB//0 and LAB//1: different stems, so no parent column needed
+    complete_unit_metadata(fp)
     assert "parent_codes" not in pq.read_table(fp).column_names
     df = pl.DataFrame(
-        {"code": ["X//a//mg", "X//a//g"], "unit": [["mg"], ["g"]]},
+        {"code": ["X//a//mg", "X//a//g"], "unit": ["mg", "g"]},
     )
     write_meds_parquet(df, fp)
-    assert collapse_unit_metadata(fp)["sibling_parents"] == 2
+    assert complete_unit_metadata(fp)["sibling_parents"] == 2
     assert pq.read_table(fp).column("parent_codes").to_pylist() == [["X//a"], ["X//a"], None]
 
 
@@ -226,11 +198,11 @@ def test_units_stated_in_descriptions_fill_only_missing_units(tmp_path):
                 "D [kg]",  # data unit disagrees: the data wins
                 "E",  # states no unit
             ],
-            "unit": [["mg"], None, None, ["lb"], None],
+            "unit": ["mg", None, None, "lb", None],
         }
     )
     write_meds_parquet(df, fp)
-    counts = collapse_unit_metadata(fp, pattern=re.compile(r" \[(?P<unit>[^\]]+)\]$"))
+    counts = complete_unit_metadata(fp, pattern=re.compile(r" \[(?P<unit>[^\]]+)\]$"))
     assert pq.read_table(fp).column("unit").to_pylist() == ["mg", "g", None, "lb", None]
     assert counts["description_units"] == 3
     assert counts["description_units_rejected"] == 1
@@ -238,7 +210,7 @@ def test_units_stated_in_descriptions_fill_only_missing_units(tmp_path):
     assert counts["description_unit_conflicts"] == 1
     # Idempotent.
     assert (
-        collapse_unit_metadata(fp, pattern=re.compile(r" \[(?P<unit>[^\]]+)\]$"))["description_units_filled"]
+        complete_unit_metadata(fp, pattern=re.compile(r" \[(?P<unit>[^\]]+)\]$"))["description_units_filled"]
         == 0
     )
 
@@ -250,11 +222,11 @@ def test_stem_description_drops_only_the_unit_span(tmp_path):
         {
             "code": ["LAB//Hb//g/dL", "LAB//Hb//mmol/L", "LAB//K//mmol/L", "LAB//K//mEq/L"],
             "description": ["Hb [g/dL] (blood)", "Hb [mmol/L] (blood)", "K [mmol/L]", "Potassium [mEq/L]"],
-            "unit": [["g/dL"], ["mmol/L"], ["mmol/L"], ["mEq/L"]],
+            "unit": ["g/dL", "mmol/L", "mmol/L", "mEq/L"],
         }
     )
     write_meds_parquet(df, fp)
-    assert collapse_unit_metadata(fp, pattern=pattern)["stem_rows"] == 2
+    assert complete_unit_metadata(fp, pattern=pattern)["stem_rows"] == 2
     rows = {r["code"]: r for r in pq.read_table(fp).to_pylist()}
     assert rows["LAB//Hb"]["description"] == "Hb (blood)"
     assert rows["LAB//K"]["description"] is None  # differs beyond the unit span

@@ -54,6 +54,9 @@ jobs:
       - name: Generate and extract synthetic data
         run: |
           uv run --no-sync MESSY-synth ./src/MC_MED_MEDS/configs/event_configs.yaml -o raw_synthetic/ --explain
+          # MESSY_synth 0.1.0 pins MEDS-Extract below 0.9, so installing it downgraded MEDS-Extract;
+          # sync back to the locked MEDS-Extract (>= 0.9) before running the ETL.
+          uv sync --locked
           uv run --no-sync meds-extract-run spec=MC-MED output_dir=./MC_MED_meds_synth \
             input_dir=raw_synthetic do_download=false
           for f in dataset.json codes.parquet subject_splits.parquet; do

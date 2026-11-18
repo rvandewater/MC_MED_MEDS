@@ -1,23 +1,20 @@
-"""The ``mc_med_collapse_unit_metadata`` stage: one ``unit`` per code, as a String, in ``codes.parquet``.
+"""The ``mc_med_unit_metadata`` stage: unit siblings and units stated in descriptions, in ``codes.parquet``.
 
-MEDS-Extract writes every ``_metadata`` column as ``List(String)``, the distinct values seen for a code.
-The ``unit`` of a code is meant to be a single value, the unit of its numeric values as recorded (MEDS
-does not standardise this column), so this post-stage turns the list into a nullable String. It runs
-first among the post-stages, so that ``sumeds_enrich`` sees (and its coverage counts) the final codes,
-and a later ``suMEDS-enrich`` retry gives the same result as the build::
+MEDS-Extract (>= 0.9) writes ``unit`` as one String per code: values stripped, blanks dropped, and a
+code with more than one distinct unit is an error, so the unit then belongs in the code for that family
+(as its last component). It is the unit of the code's numeric values as recorded (MEDS does not
+standardise this column); units are not normalised or renamed. This post-stage runs first among the
+post-stages, so that ``sumeds_enrich`` sees (and its coverage counts) the final codes, and a later
+``suMEDS-enrich`` retry gives the same result as the build::
 
     etl:
       post_stages:
-        - mc_med_collapse_unit_metadata
+        - mc_med_unit_metadata
         - sumeds_enrich: {rules: MC-MED}
 
-Each list is stripped of surrounding whitespace, null and empty entries are dropped, and the distinct
-values remain: none gives null, one gives that unit. A code with more than one unit is an error, not a
-silent choice: the fix is to put the unit in the code for that family (as its last component). Units are
-not normalised or renamed. An already-String ``unit`` passes through, and without a ``unit`` column the
-file is left unchanged, so running the stage twice changes nothing.
+Without a ``unit`` column the file is left unchanged, and running the stage twice changes nothing.
 
-**Unit siblings.** Then the stage links codes that differ only in their unit. A code is *unit-suffixed*
+**Unit siblings.** The stage links codes that differ only in their unit. A code is *unit-suffixed*
 when its ``unit`` is set and the code ends with ``//<unit>``; its *stem* is the code without that
 suffix. When two or more unit-suffixed codes share a stem (``LAB//<item>//mg/dL``,
 ``LAB//<item>//mmol/L``), the stem (``LAB//<item>``) is appended to each one's ``parent_codes``, after
@@ -46,9 +43,8 @@ from MEDS_transforms.stages import Stage
 
 logger = logging.getLogger(__name__)
 
-STAGE_NAME = "mc_med_collapse_unit_metadata"
+STAGE_NAME = "mc_med_unit_metadata"
 UNIT_COLUMN = "unit"
-MAX_EXAMPLES = 5
 
 # The unit span of a description, as a regex with a `unit` group. None: MC-MED's descriptions state
 # no units (see the module docstring).
@@ -56,55 +52,6 @@ DESCRIPTION_UNIT_PATTERN: re.Pattern | None = None
 # Placeholders for a missing unit, which are not units.
 NOT_UNITS = frozenset({"unknown", "unk", "na", "n/a", "none", "null", "-", "?"})
 UNIT_SHAPE = re.compile(r"^(?=.*[A-Za-z%°µμ])[A-Za-z0-9%°µμ/.*^·+\-\[\]{}'() ]{1,32}$")
-
-
-class MultipleUnitsError(ValueError):
-    """Some codes have more than one unit; ``n_codes`` says how many, ``examples`` names up to five."""
-
-    def __init__(self, n_codes: int, examples: list[str]):
-        self.n_codes = n_codes
-        self.examples = examples
-        super().__init__(
-            f"{n_codes} codes have more than one unit in metadata/codes.parquet (e.g. {examples}). "
-            "Each code must have one unit: put the unit in the code for that family, as its last "
-            "component (`.../<unit>`)."
-        )
-
-
-def collapse_units(codes: pl.DataFrame, column: str = UNIT_COLUMN) -> pl.DataFrame:
-    """Return ``codes`` with its List ``column`` reduced to one String unit per code.
-
-    Raises:
-        MultipleUnitsError: if a code has more than one distinct unit.
-
-    Examples:
-        >>> codes = pl.DataFrame(
-        ...     {"code": ["A", "B", "C", "D"], "unit": [["mg"], ["mg", " mg ", ""], [None], None]}
-        ... )
-        >>> collapse_units(codes)["unit"].to_list()
-        ['mg', 'mg', None, None]
-        >>> collapse_units(collapse_units(codes)).equals(collapse_units(codes))
-        True
-        >>> try:
-        ...     collapse_units(pl.DataFrame({"code": ["A", "B"], "unit": [["mg", "g"], ["mg"]]}))
-        ... except MultipleUnitsError as error:
-        ...     print(error.n_codes, error.examples)
-        1 ['A']
-    """
-    if column not in codes.columns:
-        return codes
-    dtype = codes.schema[column]
-    if not isinstance(dtype, pl.List):
-        return codes.with_columns(pl.col(column).cast(pl.String))
-    units = codes[column].list.eval(
-        pl.element().cast(pl.String).str.strip_chars().filter(pl.element().str.strip_chars() != "")
-    )
-    units = units.list.unique(maintain_order=True)
-    several = units.list.len() > 1
-    if several.any():
-        examples = codes.filter(several)["code"].head(MAX_EXAMPLES).to_list()
-        raise MultipleUnitsError(int(several.sum()), examples)
-    return codes.with_columns(units.list.first().alias(column))
 
 
 def is_unit_like(text: str) -> bool:
@@ -201,7 +148,7 @@ def add_unit_sibling_parents(codes: pl.DataFrame, column: str = UNIT_COLUMN) -> 
     Returns the new frame, the number of sibling groups (stems shared by two or more unit-suffixed
     codes) and the number of codes whose ``parent_codes`` gained their stem.
 
-    ``column`` must already be one String per code (see :func:`collapse_units`). ``parent_codes`` is
+    ``column`` must be one String per code, as MEDS-Extract writes it. ``parent_codes`` is
     created if missing; existing parents stay first and the stem is not added twice.
 
     Examples:
@@ -279,10 +226,10 @@ def unit_stem_rows(
     return rows
 
 
-def collapse_unit_metadata(
+def complete_unit_metadata(
     codes_fp: Path, out_fp: Path | None = None, pattern: re.Pattern | None = DESCRIPTION_UNIT_PATTERN
 ) -> dict[str, int]:
-    """Collapse ``unit`` to one String per code and link unit siblings, in a finished ``codes.parquet``.
+    """Fill units stated in descriptions and link unit siblings, in a finished ``codes.parquet``.
 
     Args:
         codes_fp: The ``metadata/codes.parquet`` of a finished extraction.
@@ -293,9 +240,6 @@ def collapse_unit_metadata(
         Counts: ``units`` (codes with a unit), ``sibling_groups`` (stems shared by two or more
         unit-suffixed codes), ``sibling_parents`` (codes whose ``parent_codes`` gained their stem),
         ``stem_rows`` (rows added for stems), and those of :func:`units_from_descriptions`.
-
-    Raises:
-        MultipleUnitsError: if a code has more than one unit; nothing is written then.
 
     Only ``unit`` (written as Arrow ``large_string``) and ``parent_codes`` are replaced and stem rows
     added; every other column keeps its Arrow type, and a file sorted by code stays sorted. The result
@@ -309,7 +253,8 @@ def collapse_unit_metadata(
         optional = [c for c in ("description", "parent_codes") if c in table.column_names]
         columns = ["code", UNIT_COLUMN, *optional]
         before = pl.from_arrow(table.select(columns))
-        codes, described = units_from_descriptions(collapse_units(before), pattern)
+        before = before.with_columns(pl.col(UNIT_COLUMN).cast(pl.String))
+        codes, described = units_from_descriptions(before, pattern)
         counts.update(described)
         codes, counts["sibling_groups"], counts["sibling_parents"] = add_unit_sibling_parents(codes)
         counts["units"] = int(codes[UNIT_COLUMN].is_not_null().sum())
@@ -338,15 +283,15 @@ def collapse_unit_metadata(
 
 @Stage.register(stage_name=STAGE_NAME, is_metadata=True)
 def main(cfg) -> None:
-    """Collapse ``unit`` and link unit siblings in the finished ``metadata/codes.parquet``."""
+    """Fill described units and link unit siblings in the finished ``metadata/codes.parquet``."""
     if cfg.worker != 0:
         return
     codes = Path(code_metadata_filepath).name
-    counts = collapse_unit_metadata(
+    counts = complete_unit_metadata(
         Path(cfg.stage_cfg.metadata_input_dir) / codes, Path(cfg.stage_cfg.reducer_output_dir) / codes
     )
     logger.info(
-        f"{counts['units']} codes have a unit (one String per code); {counts['sibling_parents']} unit "
+        f"{counts['units']} codes have a unit; {counts['sibling_parents']} unit "
         f"siblings in {counts['sibling_groups']} groups got their stem as a parent code; "
         f"{counts['stem_rows']} stem rows added; {counts['description_units_filled']} units filled from "
         f"descriptions ({counts['description_unit_conflicts']} disagree with the data, which wins)."

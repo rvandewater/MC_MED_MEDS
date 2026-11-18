@@ -11,7 +11,7 @@ authors = [
 ]
 description = "An ETL to extract the MC-MED (Multimodal Clinical Monitoring in the Emergency Department) dataset into the MEDS format."
 readme = "README.md"
-# Mirrors MEDS-Extract 0.8's own interpreter range; a looser floor/ceiling here would admit
+# Mirrors MEDS-Extract 0.9's own interpreter range; a looser floor/ceiling here would admit
 # interpreters it cannot be installed on.
 requires-python = ">=3.11.4,<3.14"
 classifiers = [
@@ -22,14 +22,15 @@ classifiers = [
 # Capped explicitly below the next minor: MEDS-Extract 0.x minors are breaking (MESSY syntax, runner
 # CLI), so raise this deliberately when migrating. The `[download]` extra provides
 # `meds-extract-download`, which `meds-extract-run` spawns to stage the raw data.
-# MEDS-Extract 0.8.1 runs the `etl.post_stages` the spec declares after the canonical pipeline.
+# MEDS-Extract 0.8.1 runs the `etl.post_stages` the spec declares after the canonical pipeline;
+# 0.9.0 writes `unit` in codes.parquet as one String per code (and fails on a code with more than one).
 # suMEDS 0.6.2 registers the `sumeds_enrich` stage the spec declares there, which enriches the code
 # metadata with the rules registered below. A failed enrichment is a warning, not an error (the ETL
 # output is kept as is, e.g. without internet), and `metadata/dataset.json` records whether the
 # build was enriched. suMEDS is capped below the next minor for the same reason as MEDS-Extract
 # (its rules format, output and CLI are still 0.x).
 dependencies = [
-  "MEDS-extract[download]>=0.8.1,<0.9",
+  "MEDS-extract[download]>=0.9.0,<0.10",
   "sumeds>=0.6.2,<0.7",
 ]
 
@@ -55,10 +56,9 @@ MC_MED_MEDS = ["**/__pycache__/*", "**/*.pyc", "**/.DS_Store"]
 [project.entry-points."sumeds.rules"]
 "MC-MED" = "MC_MED_MEDS:sumeds_rules.yaml"
 
-# The post-stage that makes each code's `unit` one String and links unit siblings; the spec runs it
-# first in `etl.post_stages`.
+# The post-stage that links unit siblings; the spec runs it first in `etl.post_stages`.
 [project.entry-points."MEDS_transforms.stages"]
-mc_med_collapse_unit_metadata = "MC_MED_MEDS.unit_metadata:main"
+mc_med_unit_metadata = "MC_MED_MEDS.unit_metadata:main"
 
 [project.urls]
 Homepage = "https://github.com/rvandewater/MC_MED_MEDS"

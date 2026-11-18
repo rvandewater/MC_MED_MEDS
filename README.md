@@ -89,11 +89,11 @@ code (MEDS does not standardise this column). No code changes:
 | `TRIAGE//{HR,RR,SPO2,SBP,DBP,TEMP}//{unit}`      | the unit PhysioNet (Table 1) states, as the code already spells it                                                                                                                                                                                        |
 | `AGE`, `ED_DEPARTURE`, `HOSPITAL_DISCHARGE//...` | PhysioNet (Table 1): `years`, `hours` (`ED_LOS`), `days` (`Hosp_LOS`)                                                                                                                                                                                     |
 
-MEDS-Extract writes `_metadata` columns as lists of the values seen. The first post-stage,
-`mc_med_collapse_unit_metadata` ([`src/MC_MED_MEDS/unit_metadata.py`](src/MC_MED_MEDS/unit_metadata.py)),
-turns `unit` into one String and fails if a code has more than one unit. No MC-MED code does: lab
-units are part of the lab code, and every literal is fixed per code. The same stage links **unit
-siblings**: lab codes of one component in two or more units (`LAB//{Component_name}//{unit}`) get
+MEDS-Extract (since 0.9.0) writes `unit` as one String per code and fails if a code has more than
+one unit. No MC-MED code does: lab units are part of the lab code, and every literal is fixed per
+code. The first post-stage, `mc_med_unit_metadata`
+([`src/MC_MED_MEDS/unit_metadata.py`](src/MC_MED_MEDS/unit_metadata.py)), links **unit siblings**:
+lab codes of one component in two or more units (`LAB//{Component_name}//{unit}`) get
 `LAB//{Component_name}` in their `parent_codes`, an in-dataset code, not a vocabulary code. That stem
 gets a row of its own in `codes.parquet` (no events carry it), with the siblings' shared description
 and vocabulary parents, if any, and no unit. The stage could also fill a missing unit from a unit
@@ -249,7 +249,7 @@ pipeline, and provenance stamping. See the
 [MEDS-Extract documentation](https://github.com/mmcdermott/MEDS_extract) for the MESSY format and
 runner details.
 The MESSY file also declares suMEDS's `sumeds_enrich` stage and this package's
-`mc_med_collapse_unit_metadata` stage (registered in `MEDS_transforms.stages`) in `etl.post_stages`,
+`mc_med_unit_metadata` stage (registered in `MEDS_transforms.stages`) in `etl.post_stages`,
 and a second entry point registers [`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml) with
 suMEDS under the same name, which is all the stage needs to enrich the output.
 
