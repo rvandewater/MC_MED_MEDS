@@ -153,18 +153,24 @@ def test_in_hospital_deaths_are_meds_death(events: pl.DataFrame):
 
 def test_numeric_codes_carry_their_unit(events: pl.DataFrame, codes: pl.DataFrame):
     """`unit` in codes.parquet: from `Component_units` for labs, and the unit PhysioNet states for the other
-    numeric codes, one String per code (as MEDS-Extract >= 0.9 writes it)."""
+    numeric codes, one String per code (as MEDS-Extract >= 0.9 writes it), in UCUM.
+
+    The code keeps its name, and suMEDS's `sumeds_normalize_units` keeps the spelling as recorded in
+    `unit_source_value`.
+    """
     assert codes["unit"].dtype == pl.String
     unit = dict(zip(codes["code"].to_list(), codes["unit"].to_list()))
+    recorded = dict(zip(codes["code"].to_list(), codes["unit_source_value"].to_list()))
+    assert recorded["LAB//Analyte X//umol/L"] == "umol/L"
     assert unit["LAB//Analyte X//mmol/L"] == "mmol/L"
-    assert unit["VITAL//HR//Monitor"] == "bpm"
-    assert unit["VITAL//Temp//Chart"] == "degF"
+    assert unit["VITAL//HR//Monitor"] == "{beats}/min"
+    assert unit["VITAL//Temp//Chart"] == "[degF]"
     assert unit["VITAL//SpO2//Monitor"] == "%"
-    assert unit["TRIAGE//TEMP//degC"] == "celsius"
-    assert unit["TRIAGE//HR//bpm"] == "bpm"
-    assert unit["AGE"] == "years"
-    assert unit["ED_DEPARTURE"] == "hours"
-    assert unit["HOSPITAL_DISCHARGE//Home"] == "days"
+    assert unit["TRIAGE//TEMP//degC"] == "Cel"
+    assert unit["TRIAGE//HR//bpm"] == "{beats}/min"
+    assert unit["AGE"] == "a"
+    assert unit["ED_DEPARTURE"] == "h"
+    assert unit["HOSPITAL_DISCHARGE//Home"] == "d"
     # No unit recorded or documented: none given.
     assert unit["LAB//Analyte Y//UNK"] is None
     assert unit["VITAL//Pain//Chart"] is None

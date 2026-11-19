@@ -274,11 +274,11 @@ def test_failed_enrichment_can_be_retried(
 
 def test_skipping_the_stage_gives_the_plain_etl(meds_output: Path, raw_dir: Path, tmp_path: Path):
     """`skip_stages=[sumeds_enrich]` writes no record, and the same cohort as the spec without the stage
-    (whose only other post-stage is `mc_med_unit_metadata`)."""
+    (whose other post-stages are `mc_med_unit_metadata` and `sumeds_normalize_units`)."""
     assert "sumeds_enrichment" not in json.loads((meds_output / "metadata" / "dataset.json").read_text())
 
     spec = yaml.safe_load(SPEC_FP.read_text())
-    spec["etl"]["post_stages"] = ["mc_med_unit_metadata"]
+    spec["etl"]["post_stages"] = ["mc_med_unit_metadata", "sumeds_normalize_units"]
     spec["etl"]["dataset_name"] = "MC-MED"  # a spec given as a path has no registered name
     spec_fp = tmp_path / "event_configs.yaml"
     spec_fp.write_text(yaml.safe_dump(spec, sort_keys=False))

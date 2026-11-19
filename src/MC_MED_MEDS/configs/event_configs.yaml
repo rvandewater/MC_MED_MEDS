@@ -79,6 +79,9 @@ etl:
     # (MC_MED_MEDS.unit_metadata); MEDS-Extract (>= 0.9) itself writes `unit` as one String per code.
     # First, so that suMEDS enriches the final set of codes.
     - mc_med_unit_metadata
+    # One UCUM spelling for every `unit` (suMEDS's shared table, e.g. `Cel`, `mm[Hg]`, `mg/dL`); the
+    # spelling as recorded stays in `unit_source_value`, and an unknown spelling is kept as it is.
+    - sumeds_normalize_units
     - sumeds_enrich: { rules: MC-MED }
 
 _defaults:
@@ -125,7 +128,7 @@ visits:
     _metadata:
       _self:
         # PhysioNet, Table 1: "Patient age in years".
-        unit: '"years"'
+        unit: '"a"'
   payor:
     # MC-MED records only Medicare and Medicaid; the ~60% of visits with neither are `PAYOR//UNK`.
     code: 'f"PAYOR//{$Payor_class if len_chars($Payor_class) > 0 else ''UNK''}"'
@@ -178,7 +181,7 @@ visits:
     _metadata:
       _self:
         # PhysioNet, Table 1: "Temperature at triage (C)".
-        unit: '"celsius"'
+        unit: '"Cel"'
   triage_hr:
     code: '"TRIAGE//HR//bpm" if $Arrival_time == $Arrival_time'
     time: *arrival_time
@@ -187,7 +190,7 @@ visits:
     _metadata:
       _self:
         # PhysioNet, Table 1: "Heart rate at triage (bpm)".
-        unit: '"bpm"'
+        unit: '"{beats}/min"'
   triage_rr:
     code: '"TRIAGE//RR//breaths/min" if $Arrival_time == $Arrival_time'
     time: *arrival_time
@@ -196,7 +199,7 @@ visits:
     _metadata:
       _self:
         # PhysioNet, Table 1: "Respiratory rate at triage (breaths per min.)".
-        unit: '"breaths/min"'
+        unit: '"{breaths}/min"'
   triage_spo2:
     code: '"TRIAGE//SPO2//%" if $Arrival_time == $Arrival_time'
     time: *arrival_time
@@ -214,7 +217,7 @@ visits:
     _metadata:
       _self:
         # PhysioNet, Table 1: "Systolic blood pressure at triage (mmHg)".
-        unit: '"mmHg"'
+        unit: '"mm[Hg]"'
   triage_dbp:
     code: '"TRIAGE//DBP//mmHg" if $Arrival_time == $Arrival_time'
     time: *arrival_time
@@ -223,7 +226,7 @@ visits:
     _metadata:
       _self:
         # PhysioNet, Table 1: "Diastolic blood pressure at triage (mmHg)".
-        unit: '"mmHg"'
+        unit: '"mm[Hg]"'
 
   ed_roomed:
     code: ED_ROOMED
@@ -248,7 +251,7 @@ visits:
     _metadata:
       _self:
         # PhysioNet, Table 1: "Length of ED stay, hours".
-        unit: '"hours"'
+        unit: '"h"'
 
   # ED diagnoses, recorded at ED departure (at the disposition decision for the ~0.2% of visits
   # without a departure time). One event per code: Dx_ICD10 / Dx_ICD9 hold up to 4, joined by ", ".
@@ -308,7 +311,7 @@ visits:
     _metadata:
       _self:
         # PhysioNet, Table 1: "Length of hospital stay (including post-ED admission), days".
-        unit: '"days"'
+        unit: '"d"'
 
   death:
     # In-hospital death: a DC_dispo starting with "Expired" (MC-MED has no other death source, so
@@ -413,13 +416,13 @@ numerics:
     _metadata:
       _self:
         unit: >-
-          "bpm" if $Measure == "HR"
-          else "breaths/min" if $Measure == "RR"
+          "{beats}/min" if $Measure == "HR"
+          else "{breaths}/min" if $Measure == "RR"
           else "%" if $Measure == "SpO2"
-          else "mmHg" if $Measure == "SBP"
-          else "mmHg" if $Measure == "DBP"
-          else "mmHg" if $Measure == "MAP"
-          else "degF" if $Measure == "Temp"
+          else "mm[Hg]" if $Measure == "SBP"
+          else "mm[Hg]" if $Measure == "DBP"
+          else "mm[Hg]" if $Measure == "MAP"
+          else "[degF]" if $Measure == "Temp"
           else "L/min" if $Measure == "LPM_O2"
 
 # ------------------------------------------------------------------------------------------------

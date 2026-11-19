@@ -79,15 +79,17 @@ which the config treats the same as null.
 ### Units
 
 Numeric codes also carry their `unit` in `metadata/codes.parquet`, so downstream tools read a code's
-unit from one place. `unit` is a String: the unit of the code's numeric values as recorded, one per
-code (MEDS does not standardise this column). No code changes:
+unit from one place. `unit` is a String: the unit of the code's numeric values, one per code,
+written in [UCUM](https://ucum.org/) by suMEDS's `sumeds_normalize_units` post-stage (`degC` becomes
+`Cel`, `mmHg` becomes `mm[Hg]`). The spelling as recorded stays in `unit_source_value`, a spelling
+suMEDS does not know is kept as it is, and no code changes (`TRIAGE//TEMP//degC` keeps its name):
 
-| Codes                                            | `unit` from                                                                                                                                                                                                                                               |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `LAB//...`                                       | `Component_units` as recorded (already the code's last segment); none for `//UNK`                                                                                                                                                                         |
-| `VITAL//{Measure}//...`                          | the unit the [PhysioNet page](https://physionet.org/content/mc-med/1.0.1/) (Table 7) states per measure: `bpm`, `breaths/min`, `%`, `mmHg` (SBP, DBP, MAP), `degF`, `L/min` (LPM_O2); none for Perf, Pain and the HRV measures, which have no stated unit |
-| `TRIAGE//{HR,RR,SPO2,SBP,DBP,TEMP}//{unit}`      | the unit PhysioNet (Table 1) states, as the code already spells it                                                                                                                                                                                        |
-| `AGE`, `ED_DEPARTURE`, `HOSPITAL_DISCHARGE//...` | PhysioNet (Table 1): `years`, `hours` (`ED_LOS`), `days` (`Hosp_LOS`)                                                                                                                                                                                     |
+| Codes                                            | `unit` from                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LAB//...`                                       | `Component_units` (already the code's last segment), in UCUM; none for `//UNK`                                                                                                                                                                                                   |
+| `VITAL//{Measure}//...`                          | the unit the [PhysioNet page](https://physionet.org/content/mc-med/1.0.1/) (Table 7) states per measure, as UCUM: `{beats}/min`, `{breaths}/min`, `%`, `mm[Hg]` (SBP, DBP, MAP), `[degF]`, `L/min` (LPM_O2); none for Perf, Pain and the HRV measures, which have no stated unit |
+| `TRIAGE//{HR,RR,SPO2,SBP,DBP,TEMP}//{unit}`      | the unit PhysioNet (Table 1) states (the code's last segment), as UCUM: `{beats}/min`, `{breaths}/min`, `%`, `mm[Hg]`, `Cel`                                                                                                                                                     |
+| `AGE`, `ED_DEPARTURE`, `HOSPITAL_DISCHARGE//...` | PhysioNet (Table 1), as UCUM: `a` (years), `h` (`ED_LOS`), `d` (`Hosp_LOS`)                                                                                                                                                                                                      |
 
 MEDS-Extract (since 0.9.0) writes `unit` as one String per code and fails if a code has more than
 one unit. No MC-MED code does: lab units are part of the lab code, and every literal is fixed per
@@ -151,7 +153,7 @@ ETL. The package ships the rules for it,
 [`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml), registered in
 suMEDS's `sumeds.rules` entry-point group under the same name as the MEDS-Extract spec, `MC-MED`.
 The spec declares suMEDS's `sumeds_enrich` stage after the canonical pipeline
-(`etl.post_stages`), so `meds-extract-run spec=MC-MED` enriches the finished
+(`etl.post_stages`, after `mc_med_unit_metadata` and suMEDS's `sumeds_normalize_units`), so `meds-extract-run spec=MC-MED` enriches the finished
 `metadata/codes.parquet` in place, and it stays valid MEDS code metadata. `--rules MC-MED` works
 for any suMEDS command. By default the ICD data comes from suMEDS's ontology packs, fetched from
 GitHub on first use and cached; no Athena download is needed.
@@ -248,7 +250,7 @@ generic runner (`meds-extract-run`) does everything else: staged download, the c
 pipeline, and provenance stamping. See the
 [MEDS-Extract documentation](https://github.com/mmcdermott/MEDS_extract) for the MESSY format and
 runner details.
-The MESSY file also declares suMEDS's `sumeds_enrich` stage and this package's
+The MESSY file also declares suMEDS's `sumeds_normalize_units` and `sumeds_enrich` stages and this package's
 `mc_med_unit_metadata` stage (registered in `MEDS_transforms.stages`) in `etl.post_stages`,
 and a second entry point registers [`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml) with
 suMEDS under the same name, which is all the stage needs to enrich the output.
