@@ -36,12 +36,14 @@ dependencies = [
   # 0.9.2 is the first MEDS-Extract release that reads the spec's
   # `etl.cleanup_intermediates` (mmcdermott/MEDS_extract#340).
   "MEDS-extract[download]>=0.9.2,<0.10",
-  "sumeds>=0.6.9,<0.7",
+  # suMEDS 0.6.10 ships `UnitComponentContract`, which tests/test_unit_component.py runs on the spec.
+  "sumeds>=0.6.10,<0.7",
 ]
 
 [dependency-groups]
 dev = ["pre-commit<4"]
-tests = ["pytest"]
+# suMEDS's `testing` extra: `UnitComponentContract` (tests/test_unit_component.py) and dftly.
+tests = ["pytest", "sumeds[testing]>=0.6.10,<0.7"]
 
 [tool.setuptools.package-data]
 # Ship the MESSY config and the suMEDS rules (the YAML files under the package) with the code.
