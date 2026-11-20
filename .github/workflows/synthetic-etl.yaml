@@ -47,16 +47,14 @@ jobs:
       - name: Install dependencies
         run: |
           uv sync --locked
-          # MESSY_synth 0.1.0 is the first release that reads MEDS-Extract 0.8 configs and that
-          # generates values for several regexes on one column, which the k-th-item slots need.
-          uv pip install "MESSY_synth==0.1.0"
+          # MESSY_synth 0.1.1 reads MEDS-Extract 0.8 and 0.9 configs, so it installs next to the
+          # locked MEDS-Extract 0.9, and it generates values for several regexes on one column,
+          # which the k-th-item slots need.
+          uv pip install "MESSY_synth==0.1.1"
 
       - name: Generate and extract synthetic data
         run: |
           uv run --no-sync MESSY-synth ./src/MC_MED_MEDS/configs/event_configs.yaml -o raw_synthetic/ --explain
-          # MESSY_synth 0.1.0 pins MEDS-Extract below 0.9, so installing it downgraded MEDS-Extract;
-          # sync back to the locked MEDS-Extract (>= 0.9) before running the ETL.
-          uv sync --locked
           uv run --no-sync meds-extract-run spec=MC-MED output_dir=./MC_MED_meds_synth \
             input_dir=raw_synthetic do_download=false
           for f in dataset.json codes.parquet subject_splits.parquet; do
