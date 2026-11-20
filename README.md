@@ -50,8 +50,18 @@ use `do_download=false input_dir=/path/to/mc-med/1.0.1`.
 ## What gets extracted
 
 `subject_id` is MC-MED's `MRN`. Tables keyed only by visit (`CSN`) are joined to `visits.csv` to
-obtain it, and every visit-scoped event carries its visit's `CSN` in an extra `csn` column (useful
-for linking back to the raw tables and the waveforms).
+obtain it, and every visit-scoped event carries its visit's `CSN` in an extra `hadm_id` column (useful
+for linking back to the raw tables and the waveforms), listed under `raw_source_id_columns` in
+`metadata/dataset.json`.
+
+`hadm_id` is the name the MIMIC-IV ETL and the other MEDS ETLs give the hospital encounter
+([alignEHR#55](https://github.com/rvandewater/alignEHR/issues/55)). In MC-MED a CSN ("Contact Serial
+Number", "a unique visit identifier", [PhysioNet](https://physionet.org/content/mc-med/1.0.1/)) is the
+ED visit together with any hospital admission that follows it: `visits.csv` gives the admission's
+length (`Hosp_LOS`, "including post-ED admission") and its discharge disposition under the same CSN.
+So `hadm_id` here is set for every ED visit, including those that end in discharge from the ED
+without an admission; select admitted visits with the `HOSPITAL_ADMISSION//…` events if you need only
+those. There is no ICU-stay id.
 
 | Source table   | Event(s)                           | Code pattern                                                                                                   | Time                                                 | Value(s)                                     |
 | -------------- | ---------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------- |
@@ -291,3 +301,15 @@ for a citable DOI, and update `CITATION.cff` accordingly.
 This repository was generated from the
 [ETL_MEDS_Template](https://github.com/Medical-Event-Data-Standard/ETL_MEDS_Template) copier
 template; run `uvx copier update` (with a clean git tree) to pull in template improvements.
+
+## Breaking changes
+
+### Unreleased (after 0.2.0)
+
+- **`csn` is renamed `hadm_id`.** The column holds the same value as before, the visit's `CSN`, on the
+  same events, and is still the one `raw_source_id_columns` entry in `metadata/dataset.json`. Event
+  rows and codes are otherwise unchanged. `hadm_id` is the name the MIMIC-IV ETL and the other MEDS
+  ETLs give the hospital encounter ([alignEHR#55](https://github.com/rvandewater/alignEHR/issues/55));
+  here it is the ED visit and any admission that follows it. To migrate, rename the column:
+  `pl.col("csn")` → `pl.col("hadm_id")`, or, for output written before the change,
+  `df.rename({"csn": "hadm_id"})`.
