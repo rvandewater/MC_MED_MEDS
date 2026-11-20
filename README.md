@@ -59,14 +59,14 @@ for linking back to the raw tables and the waveforms).
 |                | Arrival, age, payor                | `ED_ARRIVAL//{Means_of_arrival}`, `AGE`, `PAYOR//{Payor_class}`                                                | `Arrival_time`                                       | `AGE`: perturbed age (years)                 |
 |                | Triage                             | `TRIAGE//ESI//{acuity}`, `TRIAGE//CHIEF_COMPLAINT//{complaint}`, `TRIAGE//{HR,RR,SPO2,SBP,DBP,TEMP}//{unit}`   | `Arrival_time`                                       | vitals as `numeric_value`                    |
 |                | ED course                          | `ED_ROOMED`, `ED_DISPOSITION//{ED_dispo}`, `HOSPITAL_ADMISSION//{Admit_service}`, `ED_DEPARTURE`               | respective timestamp                                 | `ED_DEPARTURE`: ED LOS (hours)               |
-|                | ED diagnoses                       | `ED_DIAGNOSIS//ICD10CM//{code}`, `ED_DIAGNOSIS//ICD9CM//{code}` (dotted)                                       | `Departure_time` (else `Dispo_time`)                 | first ICD-10 code: `text_value` = `Dx_name`  |
+|                | ED diagnoses                       | `ED_DIAGNOSIS//ICD//10CM//{code}`, `ED_DIAGNOSIS//ICD//9CM//{code}` (dotted)                                   | `Departure_time` (else `Dispo_time`)                 | first ICD-10 code: `text_value` = `Dx_name`  |
 |                | Hospital discharge                 | `HOSPITAL_DISCHARGE//{DC_dispo}` (admitted visits only)                                                        | `Arrival_time + Hosp_LOS`, no earlier than departure | Hospital LOS (days)                          |
 |                | In-hospital death                  | `MEDS_DEATH` (`DC_dispo` starting with `Expired`)                                                              | as hospital discharge (else ED departure)            |                                              |
 | `orders.csv`   | Orders; medication administrations | `ORDER//{Order_type}//{Procedure_ID}`, `MEDICATION_ADMINISTRATION//{Procedure_ID}` (`Procedure_name` if no ID) | `Order_time`, `First_admin_time`                     |                                              |
 | `labs.csv`     | Lab component results              | `LAB//{Component_name}//{Component_units}`                                                                     | `Result_time`                                        | `numeric_value` (parsed), `text_value` (raw) |
 | `rads.csv`     | Radiology reports                  | `RADIOLOGY//{Study}`                                                                                           | `Result_time`                                        | `text_value`: impression                     |
 | `numerics.csv` | Charted / monitor vitals           | `VITAL//{Measure}//{Chart,Monitor}`                                                                            | `Time`                                               | `numeric_value`                              |
-| `pmh.csv`      | Past medical history               | `PMH//ICD10CM//{code}`, `PMH//ICD9CM//{code}` (dotted)                                                         | `Noted_date`                                         |                                              |
+| `pmh.csv`      | Past medical history               | `PMH//ICD//10CM//{code}`, `PMH//ICD//9CM//{code}` (dotted)                                                     | `Noted_date`                                         |                                              |
 | `meds.csv`     | Home medication list               | `HOME_MEDICATION//{Med_ID}`, `HOME_MEDICATION_END//{Med_ID}`                                                   | `Entry_date`, `End_date`                             |                                              |
 
 Code descriptions (order names, medication names, PMH descriptions) are written to
@@ -133,7 +133,7 @@ post-stages run in this order: `sumeds_link_unit_siblings`, `sumeds_normalize_un
   description.
 - **Past medical history** codes are written without the dot in `pmh.csv` (`CodeType` `Dx10` /
   `Dx9`). The ETL restores the dot (after the 3rd character, or the 4th for ICD-9 E codes), so past
-  and ED diagnoses share one layout, e.g. `E119` → `PMH//ICD10CM//E11.9`.
+  and ED diagnoses share one layout, e.g. `E119` → `PMH//ICD//10CM//E11.9`.
 - **Hospital discharge** has no timestamp in MC-MED. It is reconstructed as
   `Arrival_time + Hosp_LOS` days, assuming `Hosp_LOS` covers the whole encounter, ED stay included.
   `Hosp_LOS` is a whole number of days (0 for about 4% of admissions), so the time is clamped to no
@@ -201,8 +201,8 @@ suMEDS-enrich --prefetch --rules MC-MED
 meds-extract-run spec=MC-MED output_dir=/path/to/output "overrides=['++stage_cfg.offline=true']"
 ```
 
-The rules validate the `ED_DIAGNOSIS//ICD10CM//…`, `ED_DIAGNOSIS//ICD9CM//…`, `PMH//ICD10CM//…` and
-`PMH//ICD9CM//…` codes against suMEDS's versioned ICD-10-CM and ICD-9-CM data (built from the
+The rules validate the `ED_DIAGNOSIS//ICD//10CM//…`, `ED_DIAGNOSIS//ICD//9CM//…`, `PMH//ICD//10CM//…` and
+`PMH//ICD//9CM//…` codes against suMEDS's versioned ICD-10-CM and ICD-9-CM data (built from the
 CDC/NCHS and CMS files). They add the official title where a code has none, and the ICD code
 itself and its vocabulary ancestors as `parent_codes`. `parent_names` maps each of those to its
 official title, so a past-medical-history code that keeps its `pmh.csv` description still carries
@@ -286,3 +286,15 @@ for a citable DOI, and update `CITATION.cff` accordingly.
 This repository was generated from the
 [ETL_MEDS_Template](https://github.com/Medical-Event-Data-Standard/ETL_MEDS_Template) copier
 template; run `uvx copier update` (with a clean git tree) to pull in template improvements.
+
+## Breaking changes
+
+### Unreleased (after 0.2.0)
+
+- **ICD codes name the vocabulary and its edition apart, `ICD//<edition>//<code>`.** The ED and
+  past-medical-history diagnoses were `ED_DIAGNOSIS//ICD10CM//<code>`, `ED_DIAGNOSIS//ICD9CM//<code>`,
+  `PMH//ICD10CM//<code>` and `PMH//ICD9CM//<code>`; they are now `ED_DIAGNOSIS//ICD//10CM//<code>`,
+  `ED_DIAGNOSIS//ICD//9CM//<code>`, `PMH//ICD//10CM//<code>` and `PMH//ICD//9CM//<code>`, the layout
+  every MEDS ETL of this family uses for ICD. The code after the edition is unchanged (dotted), and so
+  are its `ICD10CM//…` and `ICD9CM//…` parents. To migrate, rename codes with the regex
+  `^(ED_DIAGNOSIS|PMH)//ICD(10|9)CM//` → `\1//ICD//\2CM//`.

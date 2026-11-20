@@ -17,22 +17,22 @@ RULES_FP = Path(__file__).parents[1] / "src" / "MC_MED_MEDS" / "sumeds_rules.yam
 # The ontology rule and vocabulary code each synthetic diagnosis code must resolve to. Every
 # other code of the synthetic output must match no rule.
 EXPECTED = {
-    "ED_DIAGNOSIS//ICD10CM//A00.0": ("mcmed-ed-icd10cm", "A00.0"),
-    "ED_DIAGNOSIS//ICD10CM//B00.1": ("mcmed-ed-icd10cm", "B00.1"),
-    "ED_DIAGNOSIS//ICD10CM//B00.0": ("mcmed-ed-icd10cm", "B00.0"),
-    "ED_DIAGNOSIS//ICD10CM//D00.0": ("mcmed-ed-icd10cm", "D00.0"),
-    "ED_DIAGNOSIS//ICD10CM//E00.0": ("mcmed-ed-icd10cm", "E00.0"),
-    "ED_DIAGNOSIS//ICD9CM//001.0": ("mcmed-ed-icd9cm", "001.0"),
-    "ED_DIAGNOSIS//ICD9CM//V01.1": ("mcmed-ed-icd9cm", "V01.1"),
-    "ED_DIAGNOSIS//ICD9CM//222.2": ("mcmed-ed-icd9cm", "222.2"),
-    "ED_DIAGNOSIS//ICD9CM//444.4": ("mcmed-ed-icd9cm", "444.4"),
-    "ED_DIAGNOSIS//ICD9CM//555.5": ("mcmed-ed-icd9cm", "555.5"),
-    "PMH//ICD10CM//Z00.0": ("mcmed-pmh-icd10cm", "Z00.0"),
-    "PMH//ICD10CM//I10": ("mcmed-pmh-icd10cm", "I10"),
-    "PMH//ICD10CM//S72.00XA": ("mcmed-pmh-icd10cm", "S72.00XA"),
-    "PMH//ICD9CM//401.9": ("mcmed-pmh-icd9cm", "401.9"),
-    "PMH//ICD9CM//E849.0": ("mcmed-pmh-icd9cm", "E849.0"),
-    "PMH//ICD9CM//V45.81": ("mcmed-pmh-icd9cm", "V45.81"),
+    "ED_DIAGNOSIS//ICD//10CM//A00.0": ("mcmed-ed-icd10cm", "A00.0"),
+    "ED_DIAGNOSIS//ICD//10CM//B00.1": ("mcmed-ed-icd10cm", "B00.1"),
+    "ED_DIAGNOSIS//ICD//10CM//B00.0": ("mcmed-ed-icd10cm", "B00.0"),
+    "ED_DIAGNOSIS//ICD//10CM//D00.0": ("mcmed-ed-icd10cm", "D00.0"),
+    "ED_DIAGNOSIS//ICD//10CM//E00.0": ("mcmed-ed-icd10cm", "E00.0"),
+    "ED_DIAGNOSIS//ICD//9CM//001.0": ("mcmed-ed-icd9cm", "001.0"),
+    "ED_DIAGNOSIS//ICD//9CM//V01.1": ("mcmed-ed-icd9cm", "V01.1"),
+    "ED_DIAGNOSIS//ICD//9CM//222.2": ("mcmed-ed-icd9cm", "222.2"),
+    "ED_DIAGNOSIS//ICD//9CM//444.4": ("mcmed-ed-icd9cm", "444.4"),
+    "ED_DIAGNOSIS//ICD//9CM//555.5": ("mcmed-ed-icd9cm", "555.5"),
+    "PMH//ICD//10CM//Z00.0": ("mcmed-pmh-icd10cm", "Z00.0"),
+    "PMH//ICD//10CM//I10": ("mcmed-pmh-icd10cm", "I10"),
+    "PMH//ICD//10CM//S72.00XA": ("mcmed-pmh-icd10cm", "S72.00XA"),
+    "PMH//ICD//9CM//401.9": ("mcmed-pmh-icd9cm", "401.9"),
+    "PMH//ICD//9CM//E849.0": ("mcmed-pmh-icd9cm", "E849.0"),
+    "PMH//ICD//9CM//V45.81": ("mcmed-pmh-icd9cm", "V45.81"),
 }
 
 
