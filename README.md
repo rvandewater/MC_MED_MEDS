@@ -340,7 +340,7 @@ template; run `uvx copier update` (with a clean git tree) to pull in template im
   every code that ends in its unit gets the code without the unit (its stem) as its last
   `parent_codes` entry, and the stem gets a row of its own (no unit, no events), also when the
   item has a single unit (`LAB//{Component_name}//{unit}` gets `LAB//{Component_name}`). Before, only items recorded in two or more units did.
-  Events are unchanged. On a synthetic (MESSY-synth) build, 1 `TRIAGE` code gains a stem parent and 1 stem row is added. To migrate, nothing is needed unless a tool expects every
+  Events are unchanged. On a synthetic (MESSY-synth) build of all the unreleased changes, 4 single-unit codes (1 `TRIAGE`, 3 `LAB`) gain a stem parent and 4 stem rows are added. To migrate, nothing is needed unless a tool expects every
   `codes.parquet` row to have events: drop the stem rows (no `code_template`, no `unit`), or
   ignore a parent that is the code without its last `//` component.
 
