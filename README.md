@@ -30,6 +30,15 @@ The output directory will contain the extracted MEDS dataset (`data/` and `metad
 provenance, the license and the dataset's PhysioNet page stamped in `metadata/dataset.json`
 automatically.
 
+Intermediate stage outputs are deleted after a successful run, by default: the spec sets
+MEDS-Extract's `etl.cleanup_intermediates: true`, so a finished `/path/to/output` holds only `data/`,
+`metadata/`, `.logs/` and `.meds_extract_run/`. A failed run keeps them, so the same command resumes
+where it stopped, and the same command on a finished output still does nothing. To keep them (to look
+at a stage's output; `/path/to/output/.logs/pipeline.log` keeps the stage logs either way), add
+`"overrides=['cleanup_intermediates=false']"`. Cleanup never deletes raw data: a download into the
+default `/path/to/output/.meds_extract_run/raw_input` stays, and `download_dest_dir=` elsewhere lets other
+output directories reuse it.
+
 ## Dataset access
 
 [MC-MED v1.0.1](https://physionet.org/content/mc-med/1.0.1/) (DOI
@@ -69,15 +78,15 @@ those. There is no ICU-stay id.
 |                | Arrival, age, payor                | `ED_ARRIVAL//{Means_of_arrival}`, `AGE`, `PAYOR//{Payor_class}`                                                | `Arrival_time`                                       | `AGE`: perturbed age (years)                 |
 |                | Triage                             | `TRIAGE//ESI//{acuity}`, `TRIAGE//CHIEF_COMPLAINT//{complaint}`, `TRIAGE//{HR,RR,SPO2,SBP,DBP,TEMP}//{unit}`   | `Arrival_time`                                       | vitals as `numeric_value`                    |
 |                | ED course                          | `ED_ROOMED`, `ED_DISPOSITION//{ED_dispo}`, `HOSPITAL_ADMISSION//{Admit_service}`, `ED_DEPARTURE`               | respective timestamp                                 | `ED_DEPARTURE`: ED LOS (hours)               |
-|                | ED diagnoses                       | `ED_DIAGNOSIS//ICD10CM//{code}`, `ED_DIAGNOSIS//ICD9CM//{code}` (dotted)                                       | `Departure_time` (else `Dispo_time`)                 | first ICD-10 code: `text_value` = `Dx_name`  |
+|                | ED diagnoses                       | `ED_DIAGNOSIS//ICD//10CM//{code}`, `ED_DIAGNOSIS//ICD//9CM//{code}` (dotted)                                   | `Departure_time` (else `Dispo_time`)                 | first ICD-10 code: `text_value` = `Dx_name`  |
 |                | Hospital discharge                 | `HOSPITAL_DISCHARGE//{DC_dispo}` (admitted visits only)                                                        | `Arrival_time + Hosp_LOS`, no earlier than departure | Hospital LOS (days)                          |
 |                | In-hospital death                  | `MEDS_DEATH` (`DC_dispo` starting with `Expired`)                                                              | as hospital discharge (else ED departure)            |                                              |
 | `orders.csv`   | Orders; medication administrations | `ORDER//{Order_type}//{Procedure_ID}`, `MEDICATION_ADMINISTRATION//{Procedure_ID}` (`Procedure_name` if no ID) | `Order_time`, `First_admin_time`                     |                                              |
 | `labs.csv`     | Lab component results              | `LAB//{Component_name}//{Component_units}`                                                                     | `Result_time`                                        | `numeric_value` (parsed), `text_value` (raw) |
 | `rads.csv`     | Radiology reports                  | `RADIOLOGY//{Study}`                                                                                           | `Result_time`                                        | `text_value`: impression                     |
 | `numerics.csv` | Charted / monitor vitals           | `VITAL//{Measure}//{Chart,Monitor}`                                                                            | `Time`                                               | `numeric_value`                              |
-| `pmh.csv`      | Past medical history               | `PMH//ICD10CM//{code}`, `PMH//ICD9CM//{code}` (dotted)                                                         | `Noted_date`                                         |                                              |
-| `meds.csv`     | Home medication list               | `HOME_MEDICATION//{Med_ID}`, `HOME_MEDICATION_END//{Med_ID}`                                                   | `Entry_date`, `End_date`                             |                                              |
+| `pmh.csv`      | Past medical history               | `PMH//ICD//10CM//{code}`, `PMH//ICD//9CM//{code}` (dotted)                                                     | `Noted_date`                                         |                                              |
+| `meds.csv`     | Home medication list               | `HOME_MEDICATION//START//{Med_ID}`, `HOME_MEDICATION//END//{Med_ID}`                                           | `Entry_date`, `End_date`                             |                                              |
 
 Code descriptions (order names, medication names, PMH descriptions) are written to
 `metadata/codes.parquet`; official ICD titles and parents come from suMEDS (see
@@ -89,7 +98,9 @@ templates, which MEDS-Extract's metadata stage rejects, so those events carry no
 diagnoses get their official ICD titles from suMEDS; chief complaints stay undescribed. A missing value in a categorical code component
 (race, ethnicity, arrival mode, payor, acuity, order type, unit, admit service, dispositions)
 becomes `UNK` rather than dropping the row. The CSVs write these as quoted empty strings (`""`),
-which the config treats the same as null.
+which the config treats the same as null. The lab unit in a code is stripped of surrounding
+whitespace; missing or blank is `UNK`. MEDS-Extract compares units the same way when it writes `unit`
+(stripped, blanks dropped), so ` mg` and `mg` give one code.
 
 ### Units
 
@@ -114,7 +125,8 @@ siblings**: lab codes of one component in two or more units (`LAB//{Component_na
 `LAB//{Component_name}` in their `parent_codes`, an in-dataset code, not a vocabulary code; so does
 `LAB//{Component_name}//UNK` once the component also has a real unit. That stem gets a row of its own in
 `codes.parquet` (no events carry it), with the siblings' shared description (each without its unit) and
-vocabulary parents, if any, and no unit. MC-MED uses the stage's default options: the stage could also
+vocabulary parents, if any, and no unit. With `link_single_units: true`, a lab code whose component
+has a single unit gets its stem too. MC-MED uses the stage's default options otherwise: the stage could also
 fill a missing unit from a unit stated in a code's description, but MC-MED's numeric codes have no
 descriptions from the release, so no `description_unit_pattern` is set and none is filled. The
 post-stages run in this order: `sumeds_link_unit_siblings`, `sumeds_normalize_units`, `sumeds_enrich`.
@@ -124,7 +136,9 @@ post-stages run in this order: `sumeds_link_unit_siblings`, `sumeds_normalize_un
 - **Timestamps** are shifted per patient into 2150–2350 by the dataset authors. They are parsed
   leniently against several ISO-8601 layouts. Rows matching none are dropped, and MEDS-Extract logs
   a WARNING with the count, so check the logs of your first full run. These per-event warnings are
-  in `$OUTPUT_DIR/convert_to_MEDS_events/.logs/`, not in the runner's own output. In v1.0.1 every
+  in `$OUTPUT_DIR/.logs/pipeline.log` (and in `$OUTPUT_DIR/convert_to_MEDS_events/.logs/` when the
+  stage dirs are kept with `"overrides=['cleanup_intermediates=false']"`), not in the runner's own
+  output. In v1.0.1 every
   timestamp matches the first layout, so every dropped row is one whose time is missing.
 - **Triage** has no timestamp of its own and is placed at ED arrival.
 - **Age** is perturbed (±2 years, clipped to 18–90) and there is no birth date, so it is an `AGE`
@@ -148,7 +162,7 @@ post-stages run in this order: `sumeds_link_unit_siblings`, `sumeds_normalize_un
   description.
 - **Past medical history** codes are written without the dot in `pmh.csv` (`CodeType` `Dx10` /
   `Dx9`). The ETL restores the dot (after the 3rd character, or the 4th for ICD-9 E codes), so past
-  and ED diagnoses share one layout, e.g. `E119` → `PMH//ICD10CM//E11.9`.
+  and ED diagnoses share one layout, e.g. `E119` → `PMH//ICD//10CM//E11.9`.
 - **Hospital discharge** has no timestamp in MC-MED. It is reconstructed as
   `Arrival_time + Hosp_LOS` days, assuming `Hosp_LOS` covers the whole encounter, ED stay included.
   `Hosp_LOS` is a whole number of days (0 for about 4% of admissions), so the time is clamped to no
@@ -216,8 +230,8 @@ suMEDS-enrich --prefetch --rules MC-MED
 meds-extract-run spec=MC-MED output_dir=/path/to/output "overrides=['++stage_cfg.offline=true']"
 ```
 
-The rules validate the `ED_DIAGNOSIS//ICD10CM//…`, `ED_DIAGNOSIS//ICD9CM//…`, `PMH//ICD10CM//…` and
-`PMH//ICD9CM//…` codes against suMEDS's versioned ICD-10-CM and ICD-9-CM data (built from the
+The rules validate the `ED_DIAGNOSIS//ICD//10CM//…`, `ED_DIAGNOSIS//ICD//9CM//…`, `PMH//ICD//10CM//…` and
+`PMH//ICD//9CM//…` codes against suMEDS's versioned ICD-10-CM and ICD-9-CM data (built from the
 CDC/NCHS and CMS files). They add the official title where a code has none, and the ICD code
 itself and its vocabulary ancestors as `parent_codes`. `parent_names` maps each of those to its
 official title, so a past-medical-history code that keeps its `pmh.csv` description still carries
@@ -306,6 +320,30 @@ template; run `uvx copier update` (with a clean git tree) to pull in template im
 
 ### Unreleased (after 0.2.0)
 
+- **ICD codes name the vocabulary and its edition apart, `ICD//<edition>//<code>`.** The ED and
+  past-medical-history diagnoses were `ED_DIAGNOSIS//ICD10CM//<code>`, `ED_DIAGNOSIS//ICD9CM//<code>`,
+  `PMH//ICD10CM//<code>` and `PMH//ICD9CM//<code>`; they are now `ED_DIAGNOSIS//ICD//10CM//<code>`,
+  `ED_DIAGNOSIS//ICD//9CM//<code>`, `PMH//ICD//10CM//<code>` and `PMH//ICD//9CM//<code>`, the layout
+  every MEDS ETL of this family uses for ICD. The code after the edition is unchanged (dotted), and so
+  are its `ICD10CM//…` and `ICD9CM//…` parents. To migrate, rename codes with the regex
+  `^(ED_DIAGNOSIS|PMH)//ICD(10|9)CM//` → `\1//ICD//\2CM//`.
+
+- **The unit in a lab code is stripped of surrounding whitespace, and a blank one is `UNK`**
+  (`LAB//{Component_name}//{Component_units}`). Before, an empty unit was already `UNK`, but a padded
+  one (` mg`) gave a code of its own and a whitespace-only one gave a code ending in whitespace, with
+  no `unit`. No output change on the synthetic data; codes change only where a unit was padded or
+  blank. To migrate, strip the last part of an old lab code, and write `UNK` where it is then empty:
+  `^(LAB//.+?//)\s*(\S(?:.*\S)?)?\s*$` → `\1\2`.
+
+- **`codes.parquet` gains unit-free stem rows and stem parents for single-unit codes**
+  ([#20](https://github.com/rvandewater/MC_MED_MEDS/pull/20)). suMEDS's `sumeds_link_unit_siblings` now runs with `link_single_units: true`:
+  every code that ends in its unit gets the code without the unit (its stem) as its last
+  `parent_codes` entry, and the stem gets a row of its own (no unit, no events), also when the
+  item has a single unit (`LAB//{Component_name}//{unit}` gets `LAB//{Component_name}`). Before, only items recorded in two or more units did.
+  Events are unchanged. On a synthetic (MESSY-synth) build of all the unreleased changes, 4 single-unit codes (1 `TRIAGE`, 3 `LAB`) gain a stem parent and 4 stem rows are added. To migrate, nothing is needed unless a tool expects every
+  `codes.parquet` row to have events: drop the stem rows (no `code_template`, no `unit`), or
+  ignore a parent that is the code without its last `//` component.
+
 - **`csn` is renamed `hadm_id`.** The column holds the same value as before, the visit's `CSN`, on the
   same events, and is still the one `raw_source_id_columns` entry in `metadata/dataset.json`. Event
   rows and codes are otherwise unchanged. `hadm_id` is the name the MIMIC-IV ETL and the other MEDS
@@ -313,3 +351,24 @@ template; run `uvx copier update` (with a clean git tree) to pull in template im
   here it is the ED visit and any admission that follows it. To migrate, rename the column:
   `pl.col("csn")` → `pl.col("hadm_id")`, or, for output written before the change,
   `df.rename({"csn": "hadm_id"})`.
+
+- **Home medication entries are `HOME_MEDICATION//START//<Med_ID>` and `HOME_MEDICATION//END//<Med_ID>`**
+  ([alignEHR#53](https://github.com/rvandewater/alignEHR/issues/53)). The entry was the unmarked
+  `HOME_MEDICATION//<Med_ID>` and its end `HOME_MEDICATION_END//<Med_ID>`. Both now name the token in the second
+  part, the spelling all MEDS ETLs move to for the two ends of an interval, so a start pairs with its end by
+  swapping `START` for `END`. Events, times and code metadata are otherwise unchanged.
+
+  | Old                             | New                                |
+  | ------------------------------- | ---------------------------------- |
+  | `HOME_MEDICATION//<Med_ID>`     | `HOME_MEDICATION//START//<Med_ID>` |
+  | `HOME_MEDICATION_END//<Med_ID>` | `HOME_MEDICATION//END//<Med_ID>`   |
+
+  To migrate, rewrite old codes with the regexes `^HOME_MEDICATION_END//` → `HOME_MEDICATION//END//`, then
+  `^HOME_MEDICATION//(?!START//|END//)` → `HOME_MEDICATION//START//`, in that order.
+
+- **Intermediate stage outputs are no longer kept.** Up to 0.2.0, a run left each stage's output in
+  `<output_dir>/<stage>/` (`convert_to_parquet/`, `convert_to_MEDS_events/`, `sumeds_enrich/`, …). The spec now sets MEDS-Extract's
+  `etl.cleanup_intermediates: true`, so a successful run deletes those directories and keeps only
+  `data/`, `metadata/`, `.logs/` and `.meds_extract_run/`. The MEDS data and metadata are
+  unchanged. To migrate, add `"overrides=['cleanup_intermediates=false']"` to `meds-extract-run`
+  wherever you read a stage directory after the run.

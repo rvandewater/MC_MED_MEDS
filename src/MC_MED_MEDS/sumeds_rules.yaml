@@ -18,30 +18,30 @@
 schema: sumeds-rules/0.1
 
 ontology:
-  # ED_DIAGNOSIS//ICD10CM//{Dx_ICD10 item}: dotted ICD-10-CM, as visits.csv writes it.
+  # ED_DIAGNOSIS//ICD//10CM//{Dx_ICD10 item}: dotted ICD-10-CM, as visits.csv writes it.
   - id: mcmed-ed-icd10cm
-    pattern: '^ED_DIAGNOSIS//ICD10CM//(?P<code>[A-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)$'
+    pattern: '^ED_DIAGNOSIS//ICD//10CM//(?P<code>[A-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)$'
     vocabulary: ICD10CM
     validate: pack
-  # ED_DIAGNOSIS//ICD9CM//{Dx_ICD9 item}: dotted ICD-9-CM (numeric, V and E codes).
+  # ED_DIAGNOSIS//ICD//9CM//{Dx_ICD9 item}: dotted ICD-9-CM (numeric, V and E codes).
   - id: mcmed-ed-icd9cm
-    pattern: '^ED_DIAGNOSIS//ICD9CM//(?P<code>(?:[0-9]{3}|V[0-9]{2})(?:\.[0-9]{1,2})?|E[0-9]{3}(?:\.[0-9])?)$'
+    pattern: '^ED_DIAGNOSIS//ICD//9CM//(?P<code>(?:[0-9]{3}|V[0-9]{2})(?:\.[0-9]{1,2})?|E[0-9]{3}(?:\.[0-9])?)$'
     vocabulary: ICD9CM
     validate: pack
-  # PMH//ICD10CM//{Code}: pmh.csv's undotted `Dx10` codes, dotted by the ETL.
+  # PMH//ICD//10CM//{Code}: pmh.csv's undotted `Dx10` codes, dotted by the ETL.
   - id: mcmed-pmh-icd10cm
-    pattern: '^PMH//ICD10CM//(?P<code>[A-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)$'
+    pattern: '^PMH//ICD//10CM//(?P<code>[A-Z][0-9][0-9A-Z](?:\.[0-9A-Z]{1,4})?)$'
     vocabulary: ICD10CM
     validate: pack
-  # PMH//ICD9CM//{Code}: pmh.csv's undotted `Dx9` codes, dotted by the ETL.
+  # PMH//ICD//9CM//{Code}: pmh.csv's undotted `Dx9` codes, dotted by the ETL.
   - id: mcmed-pmh-icd9cm
-    pattern: '^PMH//ICD9CM//(?P<code>(?:[0-9]{3}|V[0-9]{2})(?:\.[0-9]{1,2})?|E[0-9]{3}(?:\.[0-9])?)$'
+    pattern: '^PMH//ICD//9CM//(?P<code>(?:[0-9]{3}|V[0-9]{2})(?:\.[0-9]{1,2})?|E[0-9]{3}(?:\.[0-9])?)$'
     vocabulary: ICD9CM
     validate: pack
 
 hierarchy:
   # Same-dataset parents: the nearest ICD ancestor that is itself a code of the same family, e.g.
-  # ED_DIAGNOSIS//ICD10CM//I50.2 for ED_DIAGNOSIS//ICD10CM//I50.23. One rule per family, so an ED
+  # ED_DIAGNOSIS//ICD//10CM//I50.2 for ED_DIAGNOSIS//ICD//10CM//I50.23. One rule per family, so an ED
   # diagnosis never gets a PMH code as parent or the other way round.
   - id: mcmed-ed-diagnosis-parents
     from_ontology: true

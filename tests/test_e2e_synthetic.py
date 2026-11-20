@@ -37,8 +37,8 @@ def test_events(events: pl.DataFrame):
         "TRIAGE//ESI//3-Urgent",
         "TRIAGE//CHIEF_COMPLAINT//COMPLAINT C",
         "ED_DEPARTURE",
-        "ED_DIAGNOSIS//ICD10CM//D00.0",  # space-separated timestamp format
-        "ED_DIAGNOSIS//ICD9CM//222.2",
+        "ED_DIAGNOSIS//ICD//10CM//D00.0",  # space-separated timestamp format
+        "ED_DIAGNOSIS//ICD//9CM//222.2",
         "HOSPITAL_ADMISSION//Medicine",
         "HOSPITAL_DISCHARGE//Home",
         "HOSPITAL_DISCHARGE//Expired",
@@ -51,8 +51,8 @@ def test_events(events: pl.DataFrame):
         "RADIOLOGY//Synthetic study",
         "VITAL//HR//Monitor",
         "VITAL//Temp//Chart",
-        "HOME_MEDICATION//9001",
-        "HOME_MEDICATION_END//9001",
+        "HOME_MEDICATION//START//9001",
+        "HOME_MEDICATION//END//9001",
     }
     assert expected_codes <= codes, f"Missing codes: {sorted(expected_codes - codes)}"
 
@@ -72,16 +72,31 @@ def test_empty_values_become_unk(events: pl.DataFrame):
     ).is_empty()
 
 
+def test_lab_units_are_stripped_and_blank_is_unk(events: pl.DataFrame, codes: pl.DataFrame):
+    """CSN 102's labs record their unit as " mmol/L " and "  ": the unit in the code is stripped, so the first
+    joins `LAB//Analyte X//mmol/L`, and a blank unit is `UNK`, as a missing one."""
+    labs = events.filter(pl.col("code").str.starts_with("LAB//"))
+    assert dict(labs.group_by("code").len().iter_rows()) == {
+        "LAB//Analyte X//mmol/L": 2,
+        "LAB//Analyte X//umol/L": 1,
+        "LAB//Analyte Y//UNK": 2,
+    }
+    assert not events.filter(pl.col("code").str.contains(r"\s$")).height
+    unit = dict(codes.select("code", "unit").iter_rows())
+    assert unit["LAB//Analyte X//mmol/L"] == "mmol/L"
+    assert unit["LAB//Analyte Y//UNK"] is None
+
+
 def test_multi_valued_fields_split_into_one_event_each(events: pl.DataFrame):
     def visit_codes(csn: int, prefix: str) -> set[str]:
         sub = events.filter((pl.col("hadm_id") == csn) & pl.col("code").str.starts_with(prefix))
         return set(sub["code"].to_list())
 
     assert visit_codes(101, "ED_DIAGNOSIS//") == {
-        "ED_DIAGNOSIS//ICD10CM//A00.0",
-        "ED_DIAGNOSIS//ICD10CM//B00.1",
-        "ED_DIAGNOSIS//ICD9CM//001.0",
-        "ED_DIAGNOSIS//ICD9CM//V01.1",
+        "ED_DIAGNOSIS//ICD//10CM//A00.0",
+        "ED_DIAGNOSIS//ICD//10CM//B00.1",
+        "ED_DIAGNOSIS//ICD//9CM//001.0",
+        "ED_DIAGNOSIS//ICD//9CM//V01.1",
     }
     complaint = "TRIAGE//CHIEF_COMPLAINT//"
     assert visit_codes(101, complaint) == {f"{complaint}COMPLAINT A", f"{complaint}COMPLAINT B"}
@@ -98,8 +113,8 @@ def test_multi_valued_fields_split_into_one_event_each(events: pl.DataFrame):
 def test_diagnosis_name_is_event_text(events: pl.DataFrame):
     dx = events.filter((pl.col("hadm_id") == 101) & pl.col("code").str.starts_with("ED_DIAGNOSIS//"))
     text = dict(zip(dx["code"].to_list(), dx["text_value"].to_list()))
-    assert text["ED_DIAGNOSIS//ICD10CM//A00.0"] == "Synthetic dx A"
-    assert text["ED_DIAGNOSIS//ICD10CM//B00.1"] is None
+    assert text["ED_DIAGNOSIS//ICD//10CM//A00.0"] == "Synthetic dx A"
+    assert text["ED_DIAGNOSIS//ICD//10CM//B00.1"] is None
 
 
 def test_diagnosis_time_falls_back_to_disposition(events: pl.DataFrame):
@@ -130,16 +145,16 @@ def test_orders_without_procedure_id_use_the_name(events: pl.DataFrame, codes: p
 def test_past_medical_history_codes_are_dotted_icd(events: pl.DataFrame, codes: pl.DataFrame):
     pmh = set(events.filter(pl.col("code").str.starts_with("PMH//"))["code"].to_list())
     assert pmh == {
-        "PMH//ICD10CM//Z00.0",
-        "PMH//ICD10CM//I10",
-        "PMH//ICD10CM//S72.00XA",
-        "PMH//ICD9CM//401.9",
-        "PMH//ICD9CM//E849.0",
-        "PMH//ICD9CM//V45.81",
+        "PMH//ICD//10CM//Z00.0",
+        "PMH//ICD//10CM//I10",
+        "PMH//ICD//10CM//S72.00XA",
+        "PMH//ICD//9CM//401.9",
+        "PMH//ICD//9CM//E849.0",
+        "PMH//ICD//9CM//V45.81",
     }
     description = dict(zip(codes["code"].to_list(), codes["description"].to_list()))
-    assert description["PMH//ICD10CM//Z00.0"] == "Synthetic history A"
-    assert description["PMH//ICD9CM//401.9"] is None  # empty Desc10
+    assert description["PMH//ICD//10CM//Z00.0"] == "Synthetic history A"
+    assert description["PMH//ICD//9CM//401.9"] is None  # empty Desc10
 
 
 def test_ed_diagnoses_have_no_dataset_description(codes: pl.DataFrame):

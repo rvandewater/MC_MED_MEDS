@@ -67,6 +67,8 @@ CSN,Order_time,Result_time,Display_name,Abnormal,Component_name,Component_result
 101,2200-01-01T10:45:00Z,2200-01-01T11:30:00Z,Synthetic panel,N,Analyte X,5.1,5.1,mmol/L,N,3.5,5.5
 101,2200-01-01T10:45:00Z,2200-01-01T11:40:00Z,Synthetic panel,N,Analyte X,5100,5100,umol/L,N,3500,5500
 101,2200-01-01T10:45:00Z,2200-01-01T11:30:00Z,Synthetic panel,Y,Analyte Y,Positive,Positive,,Y,,
+102,2200-01-05T18:45:00Z,2200-01-05T19:30:00Z,Synthetic panel,N,Analyte X,4.9,4.9, mmol/L ,N,3.5,5.5
+102,2200-01-05T18:45:00Z,2200-01-05T19:30:00Z,Synthetic panel,Y,Analyte Y,Negative,Negative,  ,N,,
 """
 
 RADS = """\
