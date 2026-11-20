@@ -249,7 +249,7 @@
     ],
     "present": true,
     "raw_source_id_columns": [
-      "csn"
+      "hadm_id"
     ],
     "sumeds_enrichment": {
       "athena": false,
@@ -320,7 +320,7 @@
     "column_dtype_conflicts": {},
     "column_presence": {
       "code": 4,
-      "csn": 4,
+      "hadm_id": 4,
       "numeric_value": 4,
       "source_block": 4,
       "subject_id": 4,
@@ -329,7 +329,7 @@
     },
     "data_columns": {
       "code": "String",
-      "csn": "Int64",
+      "hadm_id": "Int64",
       "numeric_value": "Float32",
       "source_block": "String",
       "subject_id": "Int64",
@@ -337,7 +337,7 @@
       "time": "Datetime(time_unit='us', time_zone=None)"
     },
     "extra_data_columns": [
-      "csn",
+      "hadm_id",
       "source_block",
       "text_value"
     ],
