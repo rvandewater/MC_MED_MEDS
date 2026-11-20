@@ -1,5 +1,6 @@
 """End-to-end test of the full ETL on the tiny synthetic MC-MED-shaped dataset of ``conftest.py``."""
 
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -10,6 +11,14 @@ def test_output_layout(meds_output: Path):
     assert list((meds_output / "data").rglob("*.parquet")), "No MEDS data shards written"
     for expected in ("dataset.json", "codes.parquet", "subject_splits.parquet"):
         assert (meds_output / "metadata" / expected).exists(), f"Missing metadata/{expected}"
+
+
+def test_visit_id_is_hadm_id(meds_output: Path, events: pl.DataFrame):
+    """The visit's CSN is written as `hadm_id`, the hospital-encounter column of the other MEDS ETLs."""
+    dataset = json.loads((meds_output / "metadata" / "dataset.json").read_text())
+    assert dataset["raw_source_id_columns"] == ["hadm_id"]
+    assert "csn" not in events.columns
+    assert set(events["hadm_id"].drop_nulls().unique().to_list()) == {101, 102, 201, 301, 401}
 
 
 def test_events(events: pl.DataFrame):
@@ -58,12 +67,14 @@ def test_empty_values_become_unk(events: pl.DataFrame):
     assert not [c for c in codes if c.endswith("//") or "////" in c]
     assert {"RACE//UNK", "PAYOR//UNK", "TRIAGE//ESI//UNK", "HOSPITAL_ADMISSION//UNK"} <= codes
     # An empty diagnosis field is no diagnosis at all.
-    assert events.filter((pl.col("csn") == 201) & pl.col("code").str.starts_with("ED_DIAGNOSIS")).is_empty()
+    assert events.filter(
+        (pl.col("hadm_id") == 201) & pl.col("code").str.starts_with("ED_DIAGNOSIS")
+    ).is_empty()
 
 
 def test_multi_valued_fields_split_into_one_event_each(events: pl.DataFrame):
     def visit_codes(csn: int, prefix: str) -> set[str]:
-        sub = events.filter((pl.col("csn") == csn) & pl.col("code").str.starts_with(prefix))
+        sub = events.filter((pl.col("hadm_id") == csn) & pl.col("code").str.starts_with(prefix))
         return set(sub["code"].to_list())
 
     assert visit_codes(101, "ED_DIAGNOSIS//") == {
@@ -85,14 +96,14 @@ def test_multi_valued_fields_split_into_one_event_each(events: pl.DataFrame):
 
 
 def test_diagnosis_name_is_event_text(events: pl.DataFrame):
-    dx = events.filter((pl.col("csn") == 101) & pl.col("code").str.starts_with("ED_DIAGNOSIS//"))
+    dx = events.filter((pl.col("hadm_id") == 101) & pl.col("code").str.starts_with("ED_DIAGNOSIS//"))
     text = dict(zip(dx["code"].to_list(), dx["text_value"].to_list()))
     assert text["ED_DIAGNOSIS//ICD10CM//A00.0"] == "Synthetic dx A"
     assert text["ED_DIAGNOSIS//ICD10CM//B00.1"] is None
 
 
 def test_diagnosis_time_falls_back_to_disposition(events: pl.DataFrame):
-    visit = events.filter(pl.col("csn") == 401)
+    visit = events.filter(pl.col("hadm_id") == 401)
     assert "ED_DEPARTURE" not in visit["code"].to_list()
     dx_times = visit.filter(pl.col("code").str.starts_with("ED_DIAGNOSIS//"))["time"].unique().to_list()
     assert dx_times == [datetime(2280, 7, 1, 11, 0)]
@@ -100,7 +111,7 @@ def test_diagnosis_time_falls_back_to_disposition(events: pl.DataFrame):
 
 def test_hospital_discharge_time(events: pl.DataFrame):
     discharge = events.filter(pl.col("code").str.starts_with("HOSPITAL_DISCHARGE//"))
-    times = dict(zip(discharge["csn"].to_list(), discharge["time"].to_list()))
+    times = dict(zip(discharge["hadm_id"].to_list(), discharge["time"].to_list()))
     # Only admitted visits (those with a Hosp_LOS) are discharged from the hospital.
     assert set(times) == {102, 201}
     # Arrival + 3 days, which is after ED departure.
@@ -140,7 +151,7 @@ def test_ed_diagnoses_have_no_dataset_description(codes: pl.DataFrame):
 
 def test_in_hospital_deaths_are_meds_death(events: pl.DataFrame):
     deaths = events.filter(pl.col("code") == "MEDS_DEATH")
-    times = dict(zip(deaths["csn"].to_list(), deaths["time"].to_list()))
+    times = dict(zip(deaths["hadm_id"].to_list(), deaths["time"].to_list()))
     assert sorted(deaths["subject_id"].to_list()) == [1, 3]
     # At the reconstructed hospital discharge (arrival + 3 days), like HOSPITAL_DISCHARGE//Expired.
     assert times[102] == datetime(2200, 1, 8, 18, 0)

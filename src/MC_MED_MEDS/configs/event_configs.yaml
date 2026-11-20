@@ -31,8 +31,12 @@
 #     as a numeric `AGE` event at each ED arrival and there is no `MEDS_BIRTH`.
 #   * `MEDS_DEATH` marks in-hospital deaths only (hospital discharge disposition "Expired…"); no
 #     death registry is linked, so a subject without `MEDS_DEATH` is not known to be alive.
-#   * Every visit-scoped event carries the visit's `CSN` in an extra `csn` column, so MEDS events can
-#     be linked back to the raw tables and to the WFDB waveforms (`waveforms/{CSN[-3:]}/{CSN}/`).
+#   * Every visit-scoped event carries the visit's `CSN` in an extra `hadm_id` column, so MEDS events
+#     can be linked back to the raw tables and to the WFDB waveforms (`waveforms/{CSN[-3:]}/{CSN}/`).
+#     `hadm_id` is the hospital-encounter column of the other MEDS ETLs (rvandewater/alignEHR#55);
+#     here it is the ED visit together with any hospital admission that follows it, which MC-MED
+#     records under the same CSN (`Hosp_LOS` "including post-ED admission"). A visit discharged from
+#     the ED has an `hadm_id` too, although it was never admitted.
 #   * Not extracted: the waveform records themselves (WFDB signal files, not tabular events),
 #     `waveform_summary.csv`, the next-visit outcome columns of `visits.csv`
 #     (`Hours_to_next_visit`, `Dispo_class_next_visit` — recoverable from the next visit's own
@@ -67,8 +71,8 @@ etl:
   # Written to metadata/dataset.json (from https://physionet.org/content/mc-med/1.0.1/).
   license: PhysioNet Credentialed Health Data License 1.5.0
   description_uri: https://physionet.org/content/mc-med/1.0.1/
-  # The visit's CSN, which links an event back to the raw tables and the waveforms.
-  raw_source_id_columns: [csn]
+  # `hadm_id` is the visit's CSN, which links an event back to the raw tables and the waveforms.
+  raw_source_id_columns: [hadm_id]
   # After the canonical pipeline, suMEDS (a dependency of this package) fills in the official ICD
   # titles and parents of metadata/codes.parquet with the rules registered as MC-MED, and records
   # the enrichment in metadata/dataset.json. A failed enrichment (e.g. without internet access)
@@ -120,12 +124,12 @@ visits:
   ed_arrival:
     code: 'f"ED_ARRIVAL//{$Means_of_arrival if len_chars($Means_of_arrival) > 0 else ''UNK''}"'
     time: &arrival_time 'coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f")'
-    csn: $CSN
+    hadm_id: $CSN
   age:
     code: "'AGE'"
     time: *arrival_time
     numeric_value: $Age::?float64
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         # PhysioNet, Table 1: "Patient age in years".
@@ -134,51 +138,51 @@ visits:
     # MC-MED records only Medicare and Medicaid; the ~60% of visits with neither are `PAYOR//UNK`.
     code: 'f"PAYOR//{$Payor_class if len_chars($Payor_class) > 0 else ''UNK''}"'
     time: *arrival_time
-    csn: $CSN
+    hadm_id: $CSN
 
   # Triage. MC-MED gives no separate triage timestamp, so triage is placed at ED arrival.
   triage_acuity:
     code: 'f"TRIAGE//ESI//{$Triage_acuity if len_chars($Triage_acuity) > 0 else ''UNK''}"'
     time: *arrival_time
-    csn: $CSN
+    hadm_id: $CSN
   # Chief complaints: one event per complaint (CC holds up to 8, joined by "," or ", ").
   triage_chief_complaint_1:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^ *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
-    csn: $CSN
+    hadm_id: $CSN
   triage_chief_complaint_2:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
-    csn: $CSN
+    hadm_id: $CSN
   triage_chief_complaint_3:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){2} *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
-    csn: $CSN
+    hadm_id: $CSN
   triage_chief_complaint_4:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){3} *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
-    csn: $CSN
+    hadm_id: $CSN
   triage_chief_complaint_5:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){4} *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
-    csn: $CSN
+    hadm_id: $CSN
   triage_chief_complaint_6:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){5} *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
-    csn: $CSN
+    hadm_id: $CSN
   triage_chief_complaint_7:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){6} *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
-    csn: $CSN
+    hadm_id: $CSN
   triage_chief_complaint_8:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){7} *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
-    csn: $CSN
+    hadm_id: $CSN
   triage_temp:
     code: '"TRIAGE//TEMP//degC"'
     time: *arrival_time
     numeric_value: $Triage_Temp::?float64
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         # PhysioNet, Table 1: "Temperature at triage (C)".
@@ -187,7 +191,7 @@ visits:
     code: '"TRIAGE//HR//bpm"'
     time: *arrival_time
     numeric_value: $Triage_HR::?float64
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         # PhysioNet, Table 1: "Heart rate at triage (bpm)".
@@ -196,7 +200,7 @@ visits:
     code: '"TRIAGE//RR//breaths/min"'
     time: *arrival_time
     numeric_value: $Triage_RR::?float64
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         # PhysioNet, Table 1: "Respiratory rate at triage (breaths per min.)".
@@ -205,7 +209,7 @@ visits:
     code: '"TRIAGE//SPO2//%"'
     time: *arrival_time
     numeric_value: $Triage_SpO2::?float64
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         # PhysioNet, Table 1: "Oxygen saturation at triage (%)".
@@ -214,7 +218,7 @@ visits:
     code: '"TRIAGE//SBP//mmHg"'
     time: *arrival_time
     numeric_value: $Triage_SBP::?float64
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         # PhysioNet, Table 1: "Systolic blood pressure at triage (mmHg)".
@@ -223,7 +227,7 @@ visits:
     code: '"TRIAGE//DBP//mmHg"'
     time: *arrival_time
     numeric_value: $Triage_DBP::?float64
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         # PhysioNet, Table 1: "Diastolic blood pressure at triage (mmHg)".
@@ -232,23 +236,23 @@ visits:
   ed_roomed:
     code: ED_ROOMED
     time: 'coalesce($Roomed_time::?"%Y-%m-%dT%H:%M:%SZ", $Roomed_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Roomed_time::?"%Y-%m-%dT%H:%M:%S", $Roomed_time::?"%Y-%m-%d %H:%M:%S", $Roomed_time::?"%Y-%m-%d %H:%M:%S%.f")'
-    csn: $CSN
+    hadm_id: $CSN
   ed_disposition:
     code: 'f"ED_DISPOSITION//{$ED_dispo if len_chars($ED_dispo) > 0 else ''UNK''}"'
     time: 'coalesce($Dispo_time::?"%Y-%m-%dT%H:%M:%SZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S%.f")'
-    csn: $CSN
+    hadm_id: $CSN
   hospital_admission:
     # Only admitted visits have an Admit_time; all others drop (logged) here.
     code: 'f"HOSPITAL_ADMISSION//{$Admit_service if len_chars($Admit_service) > 0 else ''UNK''}"'
     time: 'coalesce($Admit_time::?"%Y-%m-%dT%H:%M:%SZ", $Admit_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Admit_time::?"%Y-%m-%dT%H:%M:%S", $Admit_time::?"%Y-%m-%d %H:%M:%S", $Admit_time::?"%Y-%m-%d %H:%M:%S%.f")'
-    csn: $CSN
+    hadm_id: $CSN
   ed_departure:
     # numeric_value: ED length of stay in hours. The guard is the event's own time column, as for
     # AGE (see UNITS above).
     code: "'ED_DEPARTURE'"
     time: 'coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f")'
     numeric_value: $ED_LOS::?float64
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         # PhysioNet, Table 1: "Length of ED stay, hours".
@@ -263,35 +267,35 @@ visits:
     code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^ *([^,]*[^, ])/ from $Dx_ICD10)'
     time: &diagnosis_time 'coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f", $Dispo_time::?"%Y-%m-%dT%H:%M:%SZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S%.f")'
     text_value: $Dx_name if len_chars($Dx_name) > 0
-    csn: $CSN
+    hadm_id: $CSN
   ed_diagnosis_icd10_2:
     code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $Dx_ICD10)'
     time: *diagnosis_time
-    csn: $CSN
+    hadm_id: $CSN
   ed_diagnosis_icd10_3:
     code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^(?:[^,]*,){2} *([^,]*[^, ])/ from $Dx_ICD10)'
     time: *diagnosis_time
-    csn: $CSN
+    hadm_id: $CSN
   ed_diagnosis_icd10_4:
     code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^(?:[^,]*,){3} *([^,]*[^, ])/ from $Dx_ICD10)'
     time: *diagnosis_time
-    csn: $CSN
+    hadm_id: $CSN
   ed_diagnosis_icd9_1:
     code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^ *([^,]*[^, ])/ from $Dx_ICD9)'
     time: *diagnosis_time
-    csn: $CSN
+    hadm_id: $CSN
   ed_diagnosis_icd9_2:
     code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $Dx_ICD9)'
     time: *diagnosis_time
-    csn: $CSN
+    hadm_id: $CSN
   ed_diagnosis_icd9_3:
     code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^(?:[^,]*,){2} *([^,]*[^, ])/ from $Dx_ICD9)'
     time: *diagnosis_time
-    csn: $CSN
+    hadm_id: $CSN
   ed_diagnosis_icd9_4:
     code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^(?:[^,]*,){3} *([^,]*[^, ])/ from $Dx_ICD9)'
     time: *diagnosis_time
-    csn: $CSN
+    hadm_id: $CSN
 
   hospital_discharge:
     # MC-MED has no discharge timestamp; it is reconstructed as Arrival_time + Hosp_LOS days, since
@@ -308,7 +312,7 @@ visits:
       if $Hosp_LOS::?float64 >= 0
       else coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f") + ($Hosp_LOS::?float64 * 86400)::?int64::seconds
     numeric_value: $Hosp_LOS::?float64
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         # PhysioNet, Table 1: "Length of hospital stay (including post-ED admission), days".
@@ -328,7 +332,7 @@ visits:
       ),
       coalesce($Dispo_time::?"%Y-%m-%dT%H:%M:%SZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S%.f")
       )
-    csn: $CSN
+    hadm_id: $CSN
 
 # ------------------------------------------------------------------------------------------------
 # orders.csv — every order placed during the visit (CSN only → join visits for MRN).
@@ -344,7 +348,7 @@ orders:
   order:
     code: 'f"ORDER//{$Order_type if len_chars($Order_type) > 0 else ''UNK''}//{$Procedure_ID if len_chars($Procedure_ID) > 0 else $Procedure_name}"'
     time: 'coalesce($Order_time::?"%Y-%m-%dT%H:%M:%SZ", $Order_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Order_time::?"%Y-%m-%dT%H:%M:%S", $Order_time::?"%Y-%m-%d %H:%M:%S", $Order_time::?"%Y-%m-%d %H:%M:%S%.f")'
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         description: $Procedure_name
@@ -352,7 +356,7 @@ orders:
     # Medication orders only: first administration time (null for all other order types → dropped).
     code: 'f"MEDICATION_ADMINISTRATION//{$Procedure_ID if len_chars($Procedure_ID) > 0 else $Procedure_name}"'
     time: 'coalesce($First_admin_time::?"%Y-%m-%dT%H:%M:%SZ", $First_admin_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $First_admin_time::?"%Y-%m-%dT%H:%M:%S", $First_admin_time::?"%Y-%m-%d %H:%M:%S", $First_admin_time::?"%Y-%m-%d %H:%M:%S%.f")'
-    csn: $CSN
+    hadm_id: $CSN
     _metadata:
       _self:
         description: $Procedure_name
@@ -373,7 +377,7 @@ labs:
     time: 'coalesce($Result_time::?"%Y-%m-%dT%H:%M:%SZ", $Result_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Result_time::?"%Y-%m-%dT%H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S%.f")'
     numeric_value: $Component_value::?float64
     text_value: $Component_result
-    csn: $CSN
+    hadm_id: $CSN
     # The unit as recorded, already the code's last segment; a code without one (`//UNK`) gets none.
     _metadata:
       _self:
@@ -392,7 +396,7 @@ rads:
     code: 'f"RADIOLOGY//{$Study}"'
     time: 'coalesce($Result_time::?"%Y-%m-%dT%H:%M:%SZ", $Result_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Result_time::?"%Y-%m-%dT%H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S%.f")'
     text_value: $Impression
-    csn: $CSN
+    hadm_id: $CSN
 
 # ------------------------------------------------------------------------------------------------
 # numerics.csv — charted and monitor vital signs (CSN only → join visits for MRN).
@@ -409,7 +413,7 @@ numerics:
     code: 'f"VITAL//{$Measure}//{$Source}"'
     time: 'coalesce($Time::?"%Y-%m-%dT%H:%M:%SZ", $Time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Time::?"%Y-%m-%dT%H:%M:%S", $Time::?"%Y-%m-%d %H:%M:%S", $Time::?"%Y-%m-%d %H:%M:%S%.f")'
     numeric_value: $Value::?float64
-    csn: $CSN
+    hadm_id: $CSN
     # Each measure's unit as PhysioNet, Table 7 states it ("Heart rate, heartbeats per minute",
     # "Respiratory rate, breaths per minute", "Oxygen saturation by pulse oximetry, %", "... blood
     # pressure, mmHg", "Body temperature, degrees Fahrenheit", "Flow rate of supplemental oxygen,
