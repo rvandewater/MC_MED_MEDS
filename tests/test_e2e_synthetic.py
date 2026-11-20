@@ -42,8 +42,8 @@ def test_events(events: pl.DataFrame):
         "RADIOLOGY//Synthetic study",
         "VITAL//HR//Monitor",
         "VITAL//Temp//Chart",
-        "HOME_MEDICATION//9001",
-        "HOME_MEDICATION_END//9001",
+        "HOME_MEDICATION//START//9001",
+        "HOME_MEDICATION//END//9001",
     }
     assert expected_codes <= codes, f"Missing codes: {sorted(expected_codes - codes)}"
 
