@@ -37,6 +37,7 @@ def test_events(events: pl.DataFrame):
         "ORDER//Lab//P1",
         "MEDICATION_ADMINISTRATION//P2",
         "LAB//Analyte X//mmol/L",
+        "LAB//Analyte X//umol/L",
         "LAB//Analyte Y//UNK",
         "RADIOLOGY//Synthetic study",
         "VITAL//HR//Monitor",
@@ -148,3 +149,55 @@ def test_in_hospital_deaths_are_meds_death(events: pl.DataFrame):
     # Without a Hosp_LOS there is no discharge event; the death falls back to ED departure.
     assert times[301] == datetime(2300, 3, 1, 13, 0)
     assert events.filter(pl.col("code") == "MEDS_BIRTH").is_empty()
+
+
+def test_numeric_codes_carry_their_unit(events: pl.DataFrame, codes: pl.DataFrame):
+    """`unit` in codes.parquet: from `Component_units` for labs, and the unit PhysioNet states for the other
+    numeric codes, one String per code (as MEDS-Extract >= 0.9 writes it), in UCUM.
+
+    The code keeps its name, and suMEDS's `sumeds_normalize_units` keeps the spelling as recorded in
+    `unit_source_value`.
+    """
+    assert codes["unit"].dtype == pl.String
+    unit = dict(zip(codes["code"].to_list(), codes["unit"].to_list()))
+    recorded = dict(zip(codes["code"].to_list(), codes["unit_source_value"].to_list()))
+    assert recorded["LAB//Analyte X//umol/L"] == "umol/L"
+    assert unit["LAB//Analyte X//mmol/L"] == "mmol/L"
+    assert unit["VITAL//HR//Monitor"] == "{beats}/min"
+    assert unit["VITAL//Temp//Chart"] == "[degF]"
+    assert unit["VITAL//SpO2//Monitor"] == "%"
+    assert unit["TRIAGE//TEMP//degC"] == "Cel"
+    assert unit["TRIAGE//HR//bpm"] == "{beats}/min"
+    assert unit["AGE"] == "a"
+    assert unit["ED_DEPARTURE"] == "h"
+    assert unit["HOSPITAL_DISCHARGE//Home"] == "d"
+    # No unit recorded or documented: none given.
+    assert unit["LAB//Analyte Y//UNK"] is None
+    assert unit["VITAL//Pain//Chart"] is None
+    assert unit["ORDER//Lab//P1"] is None
+
+
+def test_lab_unit_siblings_get_their_stem(events: pl.DataFrame, codes: pl.DataFrame):
+    """Analyte X is reported in two units: both codes get `LAB//Analyte X` as a parent, and the stem gets
+    a codes.parquet row without a unit (and without events); a lone lab code gets neither."""
+    rows = {r["code"]: r for r in codes.to_dicts()}
+    assert rows["LAB//Analyte X//mmol/L"]["parent_codes"] == ["LAB//Analyte X"]
+    assert rows["LAB//Analyte X//umol/L"]["parent_codes"] == ["LAB//Analyte X"]
+    assert rows["LAB//Analyte X"]["unit"] is None
+    assert events.filter(pl.col("code") == "LAB//Analyte X").is_empty()
+    assert not rows["LAB//Analyte Y//UNK"]["parent_codes"]
+    assert "LAB//Analyte Y" not in rows
+    # Triage vitals end with their unit but have no sibling.
+    assert not rows["TRIAGE//HR//bpm"]["parent_codes"]
+
+
+def test_unit_guards_drop_no_event(events: pl.DataFrame):
+    """The time-column guards that let the constant codes carry a unit drop no event that has a time."""
+    counts = {
+        c: events.filter(pl.col("code") == c).height for c in ("AGE", "ED_DEPARTURE", "TRIAGE//HR//bpm")
+    }
+    # Five visits; CSN 401 has no departure time.
+    assert counts == {"AGE": 5, "ED_DEPARTURE": 4, "TRIAGE//HR//bpm": 5}
+    # A missing triage value still gives its (valueless) event, as before.
+    temps = events.filter(pl.col("code") == "TRIAGE//TEMP//degC")
+    assert temps.height == 5 and temps["numeric_value"].null_count() == 1

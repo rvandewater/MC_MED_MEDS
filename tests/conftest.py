@@ -65,6 +65,7 @@ CSN,Order_time,Order_type,Procedure_name,Procedure_ID,First_admin_time,Result_ti
 LABS = """\
 CSN,Order_time,Result_time,Display_name,Abnormal,Component_name,Component_result,Component_value,Component_units,Component_abnormal,Component_nml_low,Component_nml_high
 101,2200-01-01T10:45:00Z,2200-01-01T11:30:00Z,Synthetic panel,N,Analyte X,5.1,5.1,mmol/L,N,3.5,5.5
+101,2200-01-01T10:45:00Z,2200-01-01T11:40:00Z,Synthetic panel,N,Analyte X,5100,5100,umol/L,N,3500,5500
 101,2200-01-01T10:45:00Z,2200-01-01T11:30:00Z,Synthetic panel,Y,Analyte Y,Positive,Positive,,Y,,
 """
 
@@ -77,6 +78,7 @@ NUMERICS = """\
 CSN,Source,Measure,Value,Time
 101,Monitor,HR,81,2200-01-01T10:31:00Z
 101,Chart,Temp,98.6,2200-01-01T10:35:00Z
+101,Chart,Pain,3,2200-01-01T10:40:00Z
 102,Monitor,SpO2,94,2200-01-05T18:15:00Z
 """
 

@@ -15,10 +15,11 @@ pip install MC-MED-MEDS
 meds-extract-run spec=MC-MED output_dir=/path/to/output
 ```
 
-This one command runs the ETL and then, as its last step, fills the official ICD titles and parents
-into `metadata/codes.parquet` with [suMEDS](https://github.com/rvandewater/SumMEDS) (installed with
-this package; see [Enriching code metadata with suMEDS](#enriching-code-metadata-with-sumeds)). For
-the plain ETL, add `skip_stages=[sumeds_enrich]`.
+This one command runs the ETL, makes each code's `unit` one String (see [Units](#units)), and then, as
+its last step, fills the official ICD titles and parents into `metadata/codes.parquet` with
+[suMEDS](https://github.com/rvandewater/SumMEDS) (installed with this package; see
+[Enriching code metadata with suMEDS](#enriching-code-metadata-with-sumeds)). For the ETL without suMEDS, add
+`skip_stages=[sumeds_enrich]`.
 
 Raw data is downloaded automatically per the `sources:` block of the packaged configuration; set any
 required credentials as environment variables (see below). To run against pre-staged raw data
@@ -75,6 +76,32 @@ Code descriptions (order names, medication names, PMH descriptions) are written 
 becomes `UNK` rather than dropping the row. The CSVs write these as quoted empty strings (`""`),
 which the config treats the same as null.
 
+### Units
+
+Numeric codes also carry their `unit` in `metadata/codes.parquet`, so downstream tools read a code's
+unit from one place. `unit` is a String: the unit of the code's numeric values, one per code,
+written in [UCUM](https://ucum.org/) by suMEDS's `sumeds_normalize_units` post-stage (`degC` becomes
+`Cel`, `mmHg` becomes `mm[Hg]`). The spelling as recorded stays in `unit_source_value`, a spelling
+suMEDS does not know is kept as it is, and no code changes (`TRIAGE//TEMP//degC` keeps its name):
+
+| Codes                                            | `unit` from                                                                                                                                                                                                                                                                      |
+| ------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `LAB//...`                                       | `Component_units` (already the code's last segment), in UCUM; none for `//UNK`                                                                                                                                                                                                   |
+| `VITAL//{Measure}//...`                          | the unit the [PhysioNet page](https://physionet.org/content/mc-med/1.0.1/) (Table 7) states per measure, as UCUM: `{beats}/min`, `{breaths}/min`, `%`, `mm[Hg]` (SBP, DBP, MAP), `[degF]`, `L/min` (LPM_O2); none for Perf, Pain and the HRV measures, which have no stated unit |
+| `TRIAGE//{HR,RR,SPO2,SBP,DBP,TEMP}//{unit}`      | the unit PhysioNet (Table 1) states (the code's last segment), as UCUM: `{beats}/min`, `{breaths}/min`, `%`, `mm[Hg]`, `Cel`                                                                                                                                                     |
+| `AGE`, `ED_DEPARTURE`, `HOSPITAL_DISCHARGE//...` | PhysioNet (Table 1), as UCUM: `a` (years), `h` (`ED_LOS`), `d` (`Hosp_LOS`)                                                                                                                                                                                                      |
+
+MEDS-Extract (since 0.9.0) writes `unit` as one String per code and fails if a code has more than
+one unit. No MC-MED code does: lab units are part of the lab code, and every literal is fixed per
+code. The first post-stage, `mc_med_unit_metadata`
+([`src/MC_MED_MEDS/unit_metadata.py`](src/MC_MED_MEDS/unit_metadata.py)), links **unit siblings**:
+lab codes of one component in two or more units (`LAB//{Component_name}//{unit}`) get
+`LAB//{Component_name}` in their `parent_codes`, an in-dataset code, not a vocabulary code. That stem
+gets a row of its own in `codes.parquet` (no events carry it), with the siblings' shared description
+and vocabulary parents, if any, and no unit. The stage could also fill a missing unit from a unit
+stated in a code's description, but MC-MED's numeric codes have no descriptions from the release, so
+none is filled.
+
 ### Modelling choices and caveats
 
 - **Timestamps** are shifted per patient into 2150–2350 by the dataset authors. They are parsed
@@ -126,7 +153,7 @@ ETL. The package ships the rules for it,
 [`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml), registered in
 suMEDS's `sumeds.rules` entry-point group under the same name as the MEDS-Extract spec, `MC-MED`.
 The spec declares suMEDS's `sumeds_enrich` stage after the canonical pipeline
-(`etl.post_stages`), so `meds-extract-run spec=MC-MED` enriches the finished
+(`etl.post_stages`, after `mc_med_unit_metadata` and suMEDS's `sumeds_normalize_units`), so `meds-extract-run spec=MC-MED` enriches the finished
 `metadata/codes.parquet` in place, and it stays valid MEDS code metadata. `--rules MC-MED` works
 for any suMEDS command. By default the ICD data comes from suMEDS's ontology packs, fetched from
 GitHub on first use and cached; no Athena download is needed.
@@ -223,8 +250,9 @@ generic runner (`meds-extract-run`) does everything else: staged download, the c
 pipeline, and provenance stamping. See the
 [MEDS-Extract documentation](https://github.com/mmcdermott/MEDS_extract) for the MESSY format and
 runner details.
-The MESSY file also declares suMEDS's `sumeds_enrich` stage in `etl.post_stages`, and a second
-entry point registers [`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml) with
+The MESSY file also declares suMEDS's `sumeds_normalize_units` and `sumeds_enrich` stages and this package's
+`mc_med_unit_metadata` stage (registered in `MEDS_transforms.stages`) in `etl.post_stages`,
+and a second entry point registers [`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml) with
 suMEDS under the same name, which is all the stage needs to enrich the output.
 
 ## Development
