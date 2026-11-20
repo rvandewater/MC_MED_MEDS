@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "MC-MED-MEDS"
-# Bumped with `uv version --bump ...`; merging a new version into main publishes it (see CONTRIBUTORS.md).
+# Bumped with `uv version --bump ...`; pushing a tag of the new version publishes it (see CONTRIBUTORS.md).
 version = "0.2.0"
 authors = [
   { name="Robin van de Water", email="r.p.vandewater@gmail.com" },

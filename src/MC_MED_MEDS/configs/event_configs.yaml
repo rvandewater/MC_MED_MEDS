@@ -68,6 +68,8 @@ sources:
         - pmh.csv
 
 etl:
+  # The spec name, which MEDS-Extract also uses when the key is absent; stated as the other ETLs do.
+  dataset_name: MC-MED
   # Written to metadata/dataset.json (from https://physionet.org/content/mc-med/1.0.1/).
   license: PhysioNet Credentialed Health Data License 1.5.0
   description_uri: https://physionet.org/content/mc-med/1.0.1/
@@ -114,17 +116,34 @@ visits:
   gender:
     code: 'f"GENDER//{$Gender if len_chars($Gender) > 0 else ''UNK''}"'
     time: null
+    _metadata:
+      _self:
+        description: >-
+          f"Patient gender: {$Gender if len_chars($Gender) > 0 else 'UNK'} (MC-MED visits.Gender)"
   race:
     code: 'f"RACE//{$Race if len_chars($Race) > 0 else ''UNK''}"'
     time: null
+    _metadata:
+      _self:
+        description: >-
+          f"Patient race: {$Race if len_chars($Race) > 0 else 'UNK'} (MC-MED visits.Race)"
   ethnicity:
     code: 'f"ETHNICITY//{$Ethnicity if len_chars($Ethnicity) > 0 else ''UNK''}"'
     time: null
+    _metadata:
+      _self:
+        description: >-
+          f"Patient ethnicity: {$Ethnicity if len_chars($Ethnicity) > 0 else 'UNK'} (MC-MED visits.Ethnicity)"
 
   ed_arrival:
     code: 'f"ED_ARRIVAL//{$Means_of_arrival if len_chars($Means_of_arrival) > 0 else ''UNK''}"'
     time: &arrival_time 'coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f")'
     hadm_id: $CSN
+    _metadata:
+      _self:
+        description: >-
+          f"Arrival at the emergency department; means of arrival: {$Means_of_arrival if len_chars($Means_of_arrival) > 0 else 'UNK'}
+          (MC-MED visits.Means_of_arrival, at visits.Arrival_time)"
   age:
     code: "'AGE'"
     time: *arrival_time
@@ -132,6 +151,9 @@ visits:
     hadm_id: $CSN
     _metadata:
       _self:
+        description: >-
+          "Patient age in years at ED arrival, perturbed by the dataset authors (within 2 years,
+          clipped to 18-90) (MC-MED visits.Age)"
         # PhysioNet, Table 1: "Patient age in years".
         unit: '"a"'
   payor:
@@ -139,12 +161,22 @@ visits:
     code: 'f"PAYOR//{$Payor_class if len_chars($Payor_class) > 0 else ''UNK''}"'
     time: *arrival_time
     hadm_id: $CSN
+    _metadata:
+      _self:
+        description: >-
+          f"Payor class of the ED visit: {$Payor_class if len_chars($Payor_class) > 0 else 'UNK'}; MC-MED records only Medicare and
+          Medicaid, so UNK is neither (MC-MED visits.Payor_class)"
 
   # Triage. MC-MED gives no separate triage timestamp, so triage is placed at ED arrival.
   triage_acuity:
     code: 'f"TRIAGE//ESI//{$Triage_acuity if len_chars($Triage_acuity) > 0 else ''UNK''}"'
     time: *arrival_time
     hadm_id: $CSN
+    _metadata:
+      _self:
+        description: >-
+          f"Triage acuity, Emergency Severity Index (ESI) level: {$Triage_acuity if len_chars($Triage_acuity) > 0 else 'UNK'}
+          (MC-MED visits.Triage_acuity; triage is placed at ED arrival)"
   # Chief complaints: one event per complaint (CC holds up to 8, joined by "," or ", ").
   triage_chief_complaint_1:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^ *([^,]*[^, ])/ from $CC)'
@@ -185,6 +217,8 @@ visits:
     hadm_id: $CSN
     _metadata:
       _self:
+        description: >-
+          "Temperature at triage, in degrees Celsius (MC-MED visits.Triage_Temp; triage is placed at ED arrival)"
         # PhysioNet, Table 1: "Temperature at triage (C)".
         unit: '"Cel"'
   triage_hr:
@@ -194,6 +228,8 @@ visits:
     hadm_id: $CSN
     _metadata:
       _self:
+        description: >-
+          "Heart rate at triage, in beats per minute (MC-MED visits.Triage_HR; triage is placed at ED arrival)"
         # PhysioNet, Table 1: "Heart rate at triage (bpm)".
         unit: '"{beats}/min"'
   triage_rr:
@@ -203,6 +239,8 @@ visits:
     hadm_id: $CSN
     _metadata:
       _self:
+        description: >-
+          "Respiratory rate at triage, in breaths per minute (MC-MED visits.Triage_RR; triage is placed at ED arrival)"
         # PhysioNet, Table 1: "Respiratory rate at triage (breaths per min.)".
         unit: '"{breaths}/min"'
   triage_spo2:
@@ -212,6 +250,8 @@ visits:
     hadm_id: $CSN
     _metadata:
       _self:
+        description: >-
+          "Oxygen saturation at triage, in percent (MC-MED visits.Triage_SpO2; triage is placed at ED arrival)"
         # PhysioNet, Table 1: "Oxygen saturation at triage (%)".
         unit: '"%"'
   triage_sbp:
@@ -221,6 +261,8 @@ visits:
     hadm_id: $CSN
     _metadata:
       _self:
+        description: >-
+          "Systolic blood pressure at triage, in mmHg (MC-MED visits.Triage_SBP; triage is placed at ED arrival)"
         # PhysioNet, Table 1: "Systolic blood pressure at triage (mmHg)".
         unit: '"mm[Hg]"'
   triage_dbp:
@@ -230,6 +272,8 @@ visits:
     hadm_id: $CSN
     _metadata:
       _self:
+        description: >-
+          "Diastolic blood pressure at triage, in mmHg (MC-MED visits.Triage_DBP; triage is placed at ED arrival)"
         # PhysioNet, Table 1: "Diastolic blood pressure at triage (mmHg)".
         unit: '"mm[Hg]"'
 
@@ -237,15 +281,28 @@ visits:
     code: ED_ROOMED
     time: 'coalesce($Roomed_time::?"%Y-%m-%dT%H:%M:%SZ", $Roomed_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Roomed_time::?"%Y-%m-%dT%H:%M:%S", $Roomed_time::?"%Y-%m-%d %H:%M:%S", $Roomed_time::?"%Y-%m-%d %H:%M:%S%.f")'
     hadm_id: $CSN
+    _metadata:
+      _self:
+        description: >-
+          "Patient roomed in the emergency department (MC-MED visits.Roomed_time)"
   ed_disposition:
     code: 'f"ED_DISPOSITION//{$ED_dispo if len_chars($ED_dispo) > 0 else ''UNK''}"'
     time: 'coalesce($Dispo_time::?"%Y-%m-%dT%H:%M:%SZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S%.f")'
     hadm_id: $CSN
+    _metadata:
+      _self:
+        description: >-
+          f"ED disposition: {$ED_dispo if len_chars($ED_dispo) > 0 else 'UNK'} (MC-MED visits.ED_dispo, at visits.Dispo_time)"
   hospital_admission:
     # Only admitted visits have an Admit_time; all others drop (logged) here.
     code: 'f"HOSPITAL_ADMISSION//{$Admit_service if len_chars($Admit_service) > 0 else ''UNK''}"'
     time: 'coalesce($Admit_time::?"%Y-%m-%dT%H:%M:%SZ", $Admit_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Admit_time::?"%Y-%m-%dT%H:%M:%S", $Admit_time::?"%Y-%m-%d %H:%M:%S", $Admit_time::?"%Y-%m-%d %H:%M:%S%.f")'
     hadm_id: $CSN
+    _metadata:
+      _self:
+        description: >-
+          f"Hospital admission from the ED; admitting service: {$Admit_service if len_chars($Admit_service) > 0 else 'UNK'} (MC-MED
+          visits.Admit_service, at visits.Admit_time)"
   ed_departure:
     # numeric_value: ED length of stay in hours. The guard is the event's own time column, as for
     # AGE (see UNITS above).
@@ -255,6 +312,9 @@ visits:
     hadm_id: $CSN
     _metadata:
       _self:
+        description: >-
+          "Departure from the emergency department; numeric_value is the ED length of stay in hours
+          (MC-MED visits.Departure_time, visits.ED_LOS)"
         # PhysioNet, Table 1: "Length of ED stay, hours".
         unit: '"h"'
 
@@ -315,6 +375,11 @@ visits:
     hadm_id: $CSN
     _metadata:
       _self:
+        description: >-
+          f"Hospital discharge; discharge disposition: {$DC_dispo if len_chars($DC_dispo) > 0 else 'UNK'} (MC-MED visits.DC_dispo).
+          MC-MED records no discharge time: it is visits.Arrival_time plus visits.Hosp_LOS days, no
+          earlier than ED departure. numeric_value is visits.Hosp_LOS, the hospital length of stay in
+          days"
         # PhysioNet, Table 1: "Length of hospital stay (including post-ED admission), days".
         unit: '"d"'
 
@@ -333,6 +398,12 @@ visits:
       coalesce($Dispo_time::?"%Y-%m-%dT%H:%M:%SZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S%.f")
       )
     hadm_id: $CSN
+    _metadata:
+      _self:
+        description: >-
+          "In-hospital death (MEDS standard code): a hospital discharge disposition starting with
+          Expired (MC-MED visits.DC_dispo), placed at the reconstructed hospital discharge time, else at
+          ED departure. Deaths after discharge are not recorded"
 
 # ------------------------------------------------------------------------------------------------
 # orders.csv — every order placed during the visit (CSN only → join visits for MRN).
@@ -381,6 +452,9 @@ labs:
     # The unit as recorded, already the code's last segment; a code without one (`//UNK`) gets none.
     _metadata:
       _self:
+        description: >-
+          f"Lab component result: {$Component_name} (MC-MED labs.Component_name); text_value is the
+          result as recorded"
         unit: $Component_units if len_chars($Component_units) > 0
 
 # ------------------------------------------------------------------------------------------------
@@ -397,6 +471,10 @@ rads:
     time: 'coalesce($Result_time::?"%Y-%m-%dT%H:%M:%SZ", $Result_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Result_time::?"%Y-%m-%dT%H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S%.f")'
     text_value: $Impression
     hadm_id: $CSN
+    _metadata:
+      _self:
+        description: >-
+          f"Radiology study: {$Study} (MC-MED rads.Study); text_value is the report impression"
 
 # ------------------------------------------------------------------------------------------------
 # numerics.csv — charted and monitor vital signs (CSN only → join visits for MRN).
@@ -420,6 +498,9 @@ numerics:
     # liters per minute"). Perf, Pain and the HRV measures have no stated unit and get none.
     _metadata:
       _self:
+        description: >-
+          f"Vital sign {$Measure}, from the {$Source} source (MC-MED numerics.Measure,
+          numerics.Source)"
         unit: >-
           "{beats}/min" if $Measure == "HR"
           else "{breaths}/min" if $Measure == "RR"
