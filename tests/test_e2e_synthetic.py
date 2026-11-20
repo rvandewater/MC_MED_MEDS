@@ -72,6 +72,21 @@ def test_empty_values_become_unk(events: pl.DataFrame):
     ).is_empty()
 
 
+def test_lab_units_are_stripped_and_blank_is_unk(events: pl.DataFrame, codes: pl.DataFrame):
+    """CSN 102's labs record their unit as " mmol/L " and "  ": the unit in the code is stripped, so the first
+    joins `LAB//Analyte X//mmol/L`, and a blank unit is `UNK`, as a missing one."""
+    labs = events.filter(pl.col("code").str.starts_with("LAB//"))
+    assert dict(labs.group_by("code").len().iter_rows()) == {
+        "LAB//Analyte X//mmol/L": 2,
+        "LAB//Analyte X//umol/L": 1,
+        "LAB//Analyte Y//UNK": 2,
+    }
+    assert not events.filter(pl.col("code").str.contains(r"\s$")).height
+    unit = dict(codes.select("code", "unit").iter_rows())
+    assert unit["LAB//Analyte X//mmol/L"] == "mmol/L"
+    assert unit["LAB//Analyte Y//UNK"] is None
+
+
 def test_multi_valued_fields_split_into_one_event_each(events: pl.DataFrame):
     def visit_codes(csn: int, prefix: str) -> set[str]:
         sub = events.filter((pl.col("hadm_id") == csn) & pl.col("code").str.starts_with(prefix))

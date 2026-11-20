@@ -89,7 +89,9 @@ templates, which MEDS-Extract's metadata stage rejects, so those events carry no
 diagnoses get their official ICD titles from suMEDS; chief complaints stay undescribed. A missing value in a categorical code component
 (race, ethnicity, arrival mode, payor, acuity, order type, unit, admit service, dispositions)
 becomes `UNK` rather than dropping the row. The CSVs write these as quoted empty strings (`""`),
-which the config treats the same as null.
+which the config treats the same as null. The lab unit in a code is stripped of surrounding
+whitespace; missing or blank is `UNK`. MEDS-Extract compares units the same way when it writes `unit`
+(stripped, blanks dropped), so ` mg` and `mg` give one code.
 
 ### Units
 
@@ -306,6 +308,12 @@ template; run `uvx copier update` (with a clean git tree) to pull in template im
 
 ### Unreleased (after 0.2.0)
 
+- **The unit in a lab code is stripped of surrounding whitespace, and a blank one is `UNK`**
+  (`LAB//{Component_name}//{Component_units}`). Before, an empty unit was already `UNK`, but a padded
+  one (` mg`) gave a code of its own and a whitespace-only one gave a code ending in whitespace, with
+  no `unit`. No output change on the synthetic data; codes change only where a unit was padded or
+  blank. To migrate, strip the last part of an old lab code, and write `UNK` where it is then empty:
+  `^(LAB//.+?//)\s*(\S(?:.*\S)?)?\s*$` → `\1\2`.
 - **`csn` is renamed `hadm_id`.** The column holds the same value as before, the visit's `CSN`, on the
   same events, and is still the one `raw_source_id_columns` entry in `metadata/dataset.json`. Event
   rows and codes are otherwise unchanged. `hadm_id` is the name the MIMIC-IV ETL and the other MEDS
