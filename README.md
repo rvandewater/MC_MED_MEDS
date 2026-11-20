@@ -77,7 +77,7 @@ those. There is no ICU-stay id.
 | `rads.csv`     | Radiology reports                  | `RADIOLOGY//{Study}`                                                                                           | `Result_time`                                        | `text_value`: impression                     |
 | `numerics.csv` | Charted / monitor vitals           | `VITAL//{Measure}//{Chart,Monitor}`                                                                            | `Time`                                               | `numeric_value`                              |
 | `pmh.csv`      | Past medical history               | `PMH//ICD//10CM//{code}`, `PMH//ICD//9CM//{code}` (dotted)                                                     | `Noted_date`                                         |                                              |
-| `meds.csv`     | Home medication list               | `HOME_MEDICATION//{Med_ID}`, `HOME_MEDICATION_END//{Med_ID}`                                                   | `Entry_date`, `End_date`                             |                                              |
+| `meds.csv`     | Home medication list               | `HOME_MEDICATION//START//{Med_ID}`, `HOME_MEDICATION//END//{Med_ID}`                                           | `Entry_date`, `End_date`                             |                                              |
 
 Code descriptions (order names, medication names, PMH descriptions) are written to
 `metadata/codes.parquet`; official ICD titles and parents come from suMEDS (see
@@ -321,3 +321,17 @@ template; run `uvx copier update` (with a clean git tree) to pull in template im
   here it is the ED visit and any admission that follows it. To migrate, rename the column:
   `pl.col("csn")` → `pl.col("hadm_id")`, or, for output written before the change,
   `df.rename({"csn": "hadm_id"})`.
+
+- **Home medication entries are `HOME_MEDICATION//START//<Med_ID>` and `HOME_MEDICATION//END//<Med_ID>`**
+  ([alignEHR#53](https://github.com/rvandewater/alignEHR/issues/53)). The entry was the unmarked
+  `HOME_MEDICATION//<Med_ID>` and its end `HOME_MEDICATION_END//<Med_ID>`. Both now name the token in the second
+  part, the spelling all MEDS ETLs move to for the two ends of an interval, so a start pairs with its end by
+  swapping `START` for `END`. Events, times and code metadata are otherwise unchanged.
+
+  | Old                             | New                                |
+  | ------------------------------- | ---------------------------------- |
+  | `HOME_MEDICATION//<Med_ID>`     | `HOME_MEDICATION//START//<Med_ID>` |
+  | `HOME_MEDICATION_END//<Med_ID>` | `HOME_MEDICATION//END//<Med_ID>`   |
+
+  To migrate, rewrite old codes with the regexes `^HOME_MEDICATION_END//` → `HOME_MEDICATION//END//`, then
+  `^HOME_MEDICATION//(?!START//|END//)` → `HOME_MEDICATION//START//`, in that order.

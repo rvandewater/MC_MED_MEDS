@@ -543,14 +543,17 @@ pmh:
 # so events never precede the point the information was available; End_date marks discontinuation.
 # ------------------------------------------------------------------------------------------------
 meds:
+  # An entry on the list is two codes, `HOME_MEDICATION//START//<Med_ID>` and
+  # `HOME_MEDICATION//END//<Med_ID>`, the spelling the MEDS ETLs move to for the two ends of an
+  # interval (alignEHR#53); swap START for END to pair them.
   home_medication:
-    code: 'f"HOME_MEDICATION//{$Med_ID}"'
+    code: 'f"HOME_MEDICATION//START//{$Med_ID}"'
     time: 'coalesce($Entry_date::?"%Y-%m-%d", $Entry_date::?"%Y-%m-%dT%H:%M:%SZ", $Entry_date::?"%Y-%m-%dT%H:%M:%S%.fZ", $Entry_date::?"%Y-%m-%dT%H:%M:%S", $Entry_date::?"%Y-%m-%d %H:%M:%S")'
     _metadata:
       _self:
         description: $Name
   home_medication_end:
-    code: 'f"HOME_MEDICATION_END//{$Med_ID}"'
+    code: 'f"HOME_MEDICATION//END//{$Med_ID}"'
     time: 'coalesce($End_date::?"%Y-%m-%d", $End_date::?"%Y-%m-%dT%H:%M:%SZ", $End_date::?"%Y-%m-%dT%H:%M:%S%.fZ", $End_date::?"%Y-%m-%dT%H:%M:%S", $End_date::?"%Y-%m-%d %H:%M:%S")'
     _metadata:
       _self:
