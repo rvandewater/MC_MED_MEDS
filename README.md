@@ -114,7 +114,8 @@ siblings**: lab codes of one component in two or more units (`LAB//{Component_na
 `LAB//{Component_name}` in their `parent_codes`, an in-dataset code, not a vocabulary code; so does
 `LAB//{Component_name}//UNK` once the component also has a real unit. That stem gets a row of its own in
 `codes.parquet` (no events carry it), with the siblings' shared description (each without its unit) and
-vocabulary parents, if any, and no unit. MC-MED uses the stage's default options: the stage could also
+vocabulary parents, if any, and no unit. With `link_single_units: true`, a lab code whose component
+has a single unit gets its stem too. MC-MED uses the stage's default options otherwise: the stage could also
 fill a missing unit from a unit stated in a code's description, but MC-MED's numeric codes have no
 descriptions from the release, so no `description_unit_pattern` is set and none is filled. The
 post-stages run in this order: `sumeds_link_unit_siblings`, `sumeds_normalize_units`, `sumeds_enrich`.
@@ -305,6 +306,15 @@ template; run `uvx copier update` (with a clean git tree) to pull in template im
 ## Breaking changes
 
 ### Unreleased (after 0.2.0)
+
+- **`codes.parquet` gains unit-free stem rows and stem parents for single-unit codes**
+  ([#20](https://github.com/rvandewater/MC_MED_MEDS/pull/20)). suMEDS's `sumeds_link_unit_siblings` now runs with `link_single_units: true`:
+  every code that ends in its unit gets the code without the unit (its stem) as its last
+  `parent_codes` entry, and the stem gets a row of its own (no unit, no events), also when the
+  item has a single unit (`LAB//{Component_name}//{unit}` gets `LAB//{Component_name}`). Before, only items recorded in two or more units did.
+  Events are unchanged. On a synthetic (MESSY-synth) build, 1 `TRIAGE` code gains a stem parent and 1 stem row is added. To migrate, nothing is needed unless a tool expects every
+  `codes.parquet` row to have events: drop the stem rows (no `code_template`, no `unit`), or
+  ignore a parent that is the code without its last `//` component.
 
 - **`csn` is renamed `hadm_id`.** The column holds the same value as before, the visit's `CSN`, on the
   same events, and is still the one `raw_source_id_columns` entry in `metadata/dataset.json`. Event

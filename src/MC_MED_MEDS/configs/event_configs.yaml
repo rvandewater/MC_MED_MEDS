@@ -85,9 +85,11 @@ etl:
     # (`LAB//<name>//mmol/L`, `LAB//<name>//umol/L`, and `LAB//<name>//UNK` once the name has a real
     # unit) get the code without the unit as a parent code, which gets a row of its own
     # (https://github.com/rvandewater/suMEDS/blob/main/docs/unit_siblings.md). MEDS-Extract (>= 0.9)
-    # writes `unit` as one String per code. Default options: MC-MED's descriptions state no units.
-    # First, so that suMEDS enriches the final set of codes.
-    - sumeds_link_unit_siblings
+    # writes `unit` as one String per code. With `link_single_units`, a code ending in its unit gets
+    # its stem also when its component has one unit. Default options otherwise: MC-MED's
+    # descriptions state no units. First, so that suMEDS enriches the final set of codes.
+    - sumeds_link_unit_siblings:
+        link_single_units: true
     # One UCUM spelling for every `unit` (suMEDS's shared table, e.g. `Cel`, `mm[Hg]`, `mg/dL`); the
     # spelling as recorded stays in `unit_source_value`, and an unknown spelling is kept as it is.
     - sumeds_normalize_units
