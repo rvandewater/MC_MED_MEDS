@@ -75,10 +75,13 @@ etl:
   # leaves codes.parquet as it was and does not fail the run; `suMEDS-enrich OUTPUT_DIR` finishes it
   # later. Leave it out of a run with `skip_stages=[sumeds_enrich]`.
   post_stages:
-    # Gives unit-sibling codes their code without the unit as a parent code
-    # (MC_MED_MEDS.unit_metadata); MEDS-Extract (>= 0.9) itself writes `unit` as one String per code.
+    # suMEDS's shared stage links unit siblings: codes that differ only in their unit
+    # (`LAB//<name>//mmol/L`, `LAB//<name>//umol/L`, and `LAB//<name>//UNK` once the name has a real
+    # unit) get the code without the unit as a parent code, which gets a row of its own
+    # (https://github.com/rvandewater/suMEDS/blob/main/docs/unit_siblings.md). MEDS-Extract (>= 0.9)
+    # writes `unit` as one String per code. Default options: MC-MED's descriptions state no units.
     # First, so that suMEDS enriches the final set of codes.
-    - mc_med_unit_metadata
+    - sumeds_link_unit_siblings
     # One UCUM spelling for every `unit` (suMEDS's shared table, e.g. `Cel`, `mm[Hg]`, `mg/dL`); the
     # spelling as recorded stays in `unit_source_value`, and an unknown spelling is kept as it is.
     - sumeds_normalize_units

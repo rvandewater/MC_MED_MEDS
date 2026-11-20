@@ -27,11 +27,12 @@ classifiers = [
 # suMEDS 0.6.2 registers the `sumeds_enrich` stage the spec declares there, which enriches the code
 # metadata with the rules registered below. A failed enrichment is a warning, not an error (the ETL
 # output is kept as is, e.g. without internet), and `metadata/dataset.json` records whether the
-# build was enriched. suMEDS is capped below the next minor for the same reason as MEDS-Extract
+# build was enriched. suMEDS 0.6.6 registers `sumeds_link_unit_siblings`, the first post-stage, which
+# links codes that differ only in their unit. suMEDS is capped below the next minor for the same reason as MEDS-Extract
 # (its rules format, output and CLI are still 0.x).
 dependencies = [
   "MEDS-extract[download]>=0.9.0,<0.10",
-  "sumeds>=0.6.5,<0.7",
+  "sumeds>=0.6.6,<0.7",
 ]
 
 [dependency-groups]
@@ -55,10 +56,6 @@ MC_MED_MEDS = ["**/__pycache__/*", "**/*.pyc", "**/.DS_Store"]
 # `--rules MC-MED` find them.
 [project.entry-points."sumeds.rules"]
 "MC-MED" = "MC_MED_MEDS:sumeds_rules.yaml"
-
-# The post-stage that links unit siblings; the spec runs it first in `etl.post_stages`.
-[project.entry-points."MEDS_transforms.stages"]
-mc_med_unit_metadata = "MC_MED_MEDS.unit_metadata:main"
 
 [project.urls]
 Homepage = "https://github.com/rvandewater/MC_MED_MEDS"
