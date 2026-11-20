@@ -71,7 +71,12 @@ for linking back to the raw tables and the waveforms).
 
 Code descriptions (order names, medication names, PMH descriptions) are written to
 `metadata/codes.parquet`; official ICD titles and parents come from suMEDS (see
-[below](#enriching-code-metadata-with-sumeds)). A missing value in a categorical code component
+[below](#enriching-code-metadata-with-sumeds)). Every other code gets a `_self` description that
+restates it and names the MC-MED column it comes from, paraphrasing the column documentation on
+the [PhysioNet page](https://physionet.org/content/mc-med/1.0.1/). The exceptions are the
+slot-coded chief complaints and ED diagnoses (below): a code seen in two slots has two code
+templates, which MEDS-Extract's metadata stage rejects, so those events carry no metadata. ED
+diagnoses get their official ICD titles from suMEDS; chief complaints stay undescribed. A missing value in a categorical code component
 (race, ethnicity, arrival mode, payor, acuity, order type, unit, admit service, dispositions)
 becomes `UNK` rather than dropping the row. The CSVs write these as quoted empty strings (`""`),
 which the config treats the same as null.
