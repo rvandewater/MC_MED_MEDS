@@ -278,7 +278,11 @@ def test_skipping_the_stage_gives_the_plain_etl(meds_output: Path, raw_dir: Path
     assert "sumeds_enrichment" not in json.loads((meds_output / "metadata" / "dataset.json").read_text())
 
     spec = yaml.safe_load(SPEC_FP.read_text())
-    spec["etl"]["post_stages"] = ["sumeds_link_unit_siblings", "sumeds_normalize_units"]
+    spec["etl"]["post_stages"] = spec["etl"]["post_stages"][:2]
+    assert [next(iter(s)) if isinstance(s, dict) else s for s in spec["etl"]["post_stages"]] == [
+        "sumeds_link_unit_siblings",
+        "sumeds_normalize_units",
+    ]
     spec["etl"]["dataset_name"] = "MC-MED"  # a spec given as a path has no registered name
     spec_fp = tmp_path / "event_configs.yaml"
     spec_fp.write_text(yaml.safe_dump(spec, sort_keys=False))
