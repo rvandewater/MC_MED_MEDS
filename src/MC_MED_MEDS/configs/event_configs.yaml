@@ -441,15 +441,23 @@ labs:
       visits:
         key: CSN
         cols: [MRN]
+    cols:
+      # The unit as the code's last part: stripped of surrounding whitespace, and `UNK` where it is
+      # missing or blank. MEDS-Extract compares units the same way when it writes `unit` in
+      # `codes.parquet` (stripped, blanks dropped), so ` mg` and `mg` give one code. dftly 0.7 has no
+      # strip function, so the extract takes the text from the first to the last non-whitespace
+      # character (`(?s)` lets it span line breaks), which is null when there is none.
+      _value_unit: '(extract /(?s)\S(?:.*\S)?/ from $Component_units) ?? "UNK"'
   lab:
     # numeric_value is the parsed Component_value (null for non-numeric results); text_value keeps
     # the raw Component_result (e.g. "Positive", "<0.5") for every row.
-    code: 'f"LAB//{$Component_name}//{$Component_units if len_chars($Component_units) > 0 else ''UNK''}"'
+    code: f"LAB//{$Component_name}//{$_value_unit}"
     time: 'coalesce($Result_time::?"%Y-%m-%dT%H:%M:%SZ", $Result_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Result_time::?"%Y-%m-%dT%H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S", $Result_time::?"%Y-%m-%d %H:%M:%S%.f")'
     numeric_value: $Component_value::?float64
     text_value: $Component_result
     hadm_id: $CSN
-    # The unit as recorded, already the code's last segment; a code without one (`//UNK`) gets none.
+    # The unit as recorded (MEDS-Extract strips it), already the code's last segment; a code without
+    # one (`//UNK`) gets none.
     _metadata:
       _self:
         description: >-
