@@ -30,6 +30,15 @@ The output directory will contain the extracted MEDS dataset (`data/` and `metad
 provenance, the license and the dataset's PhysioNet page stamped in `metadata/dataset.json`
 automatically.
 
+Intermediate stage outputs are deleted after a successful run, by default: the spec sets
+MEDS-Extract's `etl.cleanup_intermediates: true`, so a finished `/path/to/output` holds only `data/`,
+`metadata/`, `.logs/` and `.meds_extract_run/`. A failed run keeps them, so the same command resumes
+where it stopped, and the same command on a finished output still does nothing. To keep them (to look
+at a stage's output; `/path/to/output/.logs/pipeline.log` keeps the stage logs either way), add
+`"overrides=['cleanup_intermediates=false']"`. Cleanup never deletes raw data: a download into the
+default `/path/to/output/.meds_extract_run/raw_input` stays, and `download_dest_dir=` elsewhere lets other
+output directories reuse it.
+
 ## Dataset access
 
 [MC-MED v1.0.1](https://physionet.org/content/mc-med/1.0.1/) (DOI
@@ -126,7 +135,9 @@ post-stages run in this order: `sumeds_link_unit_siblings`, `sumeds_normalize_un
 - **Timestamps** are shifted per patient into 2150–2350 by the dataset authors. They are parsed
   leniently against several ISO-8601 layouts. Rows matching none are dropped, and MEDS-Extract logs
   a WARNING with the count, so check the logs of your first full run. These per-event warnings are
-  in `$OUTPUT_DIR/convert_to_MEDS_events/.logs/`, not in the runner's own output. In v1.0.1 every
+  in `$OUTPUT_DIR/.logs/pipeline.log` (and in `$OUTPUT_DIR/convert_to_MEDS_events/.logs/` when the
+  stage dirs are kept with `"overrides=['cleanup_intermediates=false']"`), not in the runner's own
+  output. In v1.0.1 every
   timestamp matches the first layout, so every dropped row is one whose time is missing.
 - **Triage** has no timestamp of its own and is placed at ED arrival.
 - **Age** is perturbed (±2 years, clipped to 18–90) and there is no birth date, so it is an `AGE`
@@ -344,3 +355,10 @@ template; run `uvx copier update` (with a clean git tree) to pull in template im
 
   To migrate, rewrite old codes with the regexes `^HOME_MEDICATION_END//` → `HOME_MEDICATION//END//`, then
   `^HOME_MEDICATION//(?!START//|END//)` → `HOME_MEDICATION//START//`, in that order.
+
+- **Intermediate stage outputs are no longer kept.** Up to 0.2.0, a run left each stage's output in
+  `<output_dir>/<stage>/` (`convert_to_parquet/`, `convert_to_MEDS_events/`, `sumeds_enrich/`, …). The spec now sets MEDS-Extract's
+  `etl.cleanup_intermediates: true`, so a successful run deletes those directories and keeps only
+  `data/`, `metadata/`, `.logs/` and `.meds_extract_run/`. The MEDS data and metadata are
+  unchanged. To migrate, add `"overrides=['cleanup_intermediates=false']"` to `meds-extract-run`
+  wherever you read a stage directory after the run.

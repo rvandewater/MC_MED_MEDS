@@ -72,6 +72,8 @@ etl:
   dataset_name: MC-MED
   # Written to metadata/dataset.json (from https://physionet.org/content/mc-med/1.0.1/).
   license: PhysioNet Credentialed Health Data License 1.5.0
+  # Delete the <output_dir>/<stage> dirs after a successful run; keep: "overrides=['cleanup_intermediates=false']"
+  cleanup_intermediates: true
   description_uri: https://physionet.org/content/mc-med/1.0.1/
   # `hadm_id` is the visit's CSN, which links an event back to the raw tables and the waveforms.
   raw_source_id_columns: [hadm_id]
