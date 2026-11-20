@@ -75,10 +75,13 @@ etl:
   # leaves codes.parquet as it was and does not fail the run; `suMEDS-enrich OUTPUT_DIR` finishes it
   # later. Leave it out of a run with `skip_stages=[sumeds_enrich]`.
   post_stages:
-    # Gives unit-sibling codes their code without the unit as a parent code
-    # (MC_MED_MEDS.unit_metadata); MEDS-Extract (>= 0.9) itself writes `unit` as one String per code.
+    # suMEDS's shared stage links unit siblings: codes that differ only in their unit
+    # (`LAB//<name>//mmol/L`, `LAB//<name>//umol/L`, and `LAB//<name>//UNK` once the name has a real
+    # unit) get the code without the unit as a parent code, which gets a row of its own
+    # (https://github.com/rvandewater/suMEDS/blob/main/docs/unit_siblings.md). MEDS-Extract (>= 0.9)
+    # writes `unit` as one String per code. Default options: MC-MED's descriptions state no units.
     # First, so that suMEDS enriches the final set of codes.
-    - mc_med_unit_metadata
+    - sumeds_link_unit_siblings
     # One UCUM spelling for every `unit` (suMEDS's shared table, e.g. `Cel`, `mm[Hg]`, `mg/dL`); the
     # spelling as recorded stays in `unit_source_value`, and an unknown spelling is kept as it is.
     - sumeds_normalize_units
@@ -96,11 +99,9 @@ _defaults:
 # the unit is taken, written in the short form the triage codes already use. Measures the page gives
 # no unit for (Perf, Pain, 1min_HRV, 5min_HRV) get none.
 #
-# MEDS-Extract 0.8 attaches `_metadata` only to a code whose expression references a source column
-# (mmcdermott/MEDS_extract#166), so the constant codes that get a unit (AGE, ED_DEPARTURE and the
-# triage vitals) are guarded by their own time column (`if $Arrival_time == $Arrival_time`, and
-# `$Departure_time` for ED_DEPARTURE): false only where that column is null, and such a row has no
-# time and produces no event anyway. The guard changes no event.
+# The constant codes that get a unit (AGE, ED_DEPARTURE and the triage vitals) are plain literals:
+# MEDS-Extract (>= 0.8.1, mmcdermott/MEDS_extract#166) attaches `_self` metadata to literal codes,
+# and a row whose time column is null yields no event, so no guard on the time column is needed.
 
 # ------------------------------------------------------------------------------------------------
 # visits.csv — one row per ED visit (MRN, CSN): demographics, triage, ED course, dispositions.
@@ -121,7 +122,7 @@ visits:
     time: &arrival_time 'coalesce($Arrival_time::?"%Y-%m-%dT%H:%M:%SZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Arrival_time::?"%Y-%m-%dT%H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S", $Arrival_time::?"%Y-%m-%d %H:%M:%S%.f")'
     csn: $CSN
   age:
-    code: "'AGE' if $Arrival_time == $Arrival_time"
+    code: "'AGE'"
     time: *arrival_time
     numeric_value: $Age::?float64
     csn: $CSN
@@ -174,7 +175,7 @@ visits:
     time: *arrival_time
     csn: $CSN
   triage_temp:
-    code: '"TRIAGE//TEMP//degC" if $Arrival_time == $Arrival_time'
+    code: '"TRIAGE//TEMP//degC"'
     time: *arrival_time
     numeric_value: $Triage_Temp::?float64
     csn: $CSN
@@ -183,7 +184,7 @@ visits:
         # PhysioNet, Table 1: "Temperature at triage (C)".
         unit: '"Cel"'
   triage_hr:
-    code: '"TRIAGE//HR//bpm" if $Arrival_time == $Arrival_time'
+    code: '"TRIAGE//HR//bpm"'
     time: *arrival_time
     numeric_value: $Triage_HR::?float64
     csn: $CSN
@@ -192,7 +193,7 @@ visits:
         # PhysioNet, Table 1: "Heart rate at triage (bpm)".
         unit: '"{beats}/min"'
   triage_rr:
-    code: '"TRIAGE//RR//breaths/min" if $Arrival_time == $Arrival_time'
+    code: '"TRIAGE//RR//breaths/min"'
     time: *arrival_time
     numeric_value: $Triage_RR::?float64
     csn: $CSN
@@ -201,7 +202,7 @@ visits:
         # PhysioNet, Table 1: "Respiratory rate at triage (breaths per min.)".
         unit: '"{breaths}/min"'
   triage_spo2:
-    code: '"TRIAGE//SPO2//%" if $Arrival_time == $Arrival_time'
+    code: '"TRIAGE//SPO2//%"'
     time: *arrival_time
     numeric_value: $Triage_SpO2::?float64
     csn: $CSN
@@ -210,7 +211,7 @@ visits:
         # PhysioNet, Table 1: "Oxygen saturation at triage (%)".
         unit: '"%"'
   triage_sbp:
-    code: '"TRIAGE//SBP//mmHg" if $Arrival_time == $Arrival_time'
+    code: '"TRIAGE//SBP//mmHg"'
     time: *arrival_time
     numeric_value: $Triage_SBP::?float64
     csn: $CSN
@@ -219,7 +220,7 @@ visits:
         # PhysioNet, Table 1: "Systolic blood pressure at triage (mmHg)".
         unit: '"mm[Hg]"'
   triage_dbp:
-    code: '"TRIAGE//DBP//mmHg" if $Arrival_time == $Arrival_time'
+    code: '"TRIAGE//DBP//mmHg"'
     time: *arrival_time
     numeric_value: $Triage_DBP::?float64
     csn: $CSN
@@ -244,7 +245,7 @@ visits:
   ed_departure:
     # numeric_value: ED length of stay in hours. The guard is the event's own time column, as for
     # AGE (see UNITS above).
-    code: "'ED_DEPARTURE' if $Departure_time == $Departure_time"
+    code: "'ED_DEPARTURE'"
     time: 'coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f")'
     numeric_value: $ED_LOS::?float64
     csn: $CSN

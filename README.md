@@ -93,14 +93,16 @@ suMEDS does not know is kept as it is, and no code changes (`TRIAGE//TEMP//degC`
 
 MEDS-Extract (since 0.9.0) writes `unit` as one String per code and fails if a code has more than
 one unit. No MC-MED code does: lab units are part of the lab code, and every literal is fixed per
-code. The first post-stage, `mc_med_unit_metadata`
-([`src/MC_MED_MEDS/unit_metadata.py`](src/MC_MED_MEDS/unit_metadata.py)), links **unit siblings**:
-lab codes of one component in two or more units (`LAB//{Component_name}//{unit}`) get
-`LAB//{Component_name}` in their `parent_codes`, an in-dataset code, not a vocabulary code. That stem
-gets a row of its own in `codes.parquet` (no events carry it), with the siblings' shared description
-and vocabulary parents, if any, and no unit. The stage could also fill a missing unit from a unit
-stated in a code's description, but MC-MED's numeric codes have no descriptions from the release, so
-none is filled.
+code. The first post-stage, suMEDS's shared `sumeds_link_unit_siblings`
+([docs](https://github.com/rvandewater/suMEDS/blob/main/docs/unit_siblings.md)), links **unit
+siblings**: lab codes of one component in two or more units (`LAB//{Component_name}//{unit}`) get
+`LAB//{Component_name}` in their `parent_codes`, an in-dataset code, not a vocabulary code; so does
+`LAB//{Component_name}//UNK` once the component also has a real unit. That stem gets a row of its own in
+`codes.parquet` (no events carry it), with the siblings' shared description (each without its unit) and
+vocabulary parents, if any, and no unit. MC-MED uses the stage's default options: the stage could also
+fill a missing unit from a unit stated in a code's description, but MC-MED's numeric codes have no
+descriptions from the release, so no `description_unit_pattern` is set and none is filled. The
+post-stages run in this order: `sumeds_link_unit_siblings`, `sumeds_normalize_units`, `sumeds_enrich`.
 
 ### Modelling choices and caveats
 
@@ -153,7 +155,7 @@ ETL. The package ships the rules for it,
 [`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml), registered in
 suMEDS's `sumeds.rules` entry-point group under the same name as the MEDS-Extract spec, `MC-MED`.
 The spec declares suMEDS's `sumeds_enrich` stage after the canonical pipeline
-(`etl.post_stages`, after `mc_med_unit_metadata` and suMEDS's `sumeds_normalize_units`), so `meds-extract-run spec=MC-MED` enriches the finished
+(`etl.post_stages`, after suMEDS's `sumeds_link_unit_siblings` and `sumeds_normalize_units`), so `meds-extract-run spec=MC-MED` enriches the finished
 `metadata/codes.parquet` in place, and it stays valid MEDS code metadata. `--rules MC-MED` works
 for any suMEDS command. By default the ICD data comes from suMEDS's ontology packs, fetched from
 GitHub on first use and cached; no Athena download is needed.
@@ -250,8 +252,8 @@ generic runner (`meds-extract-run`) does everything else: staged download, the c
 pipeline, and provenance stamping. See the
 [MEDS-Extract documentation](https://github.com/mmcdermott/MEDS_extract) for the MESSY format and
 runner details.
-The MESSY file also declares suMEDS's `sumeds_normalize_units` and `sumeds_enrich` stages and this package's
-`mc_med_unit_metadata` stage (registered in `MEDS_transforms.stages`) in `etl.post_stages`,
+The MESSY file also declares suMEDS's `sumeds_link_unit_siblings`, `sumeds_normalize_units` and
+`sumeds_enrich` stages in `etl.post_stages`,
 and a second entry point registers [`src/MC_MED_MEDS/sumeds_rules.yaml`](src/MC_MED_MEDS/sumeds_rules.yaml) with
 suMEDS under the same name, which is all the stage needs to enrich the output.
 
