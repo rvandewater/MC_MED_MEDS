@@ -30,7 +30,7 @@ from meds import CodeMetadataSchema, DatasetMetadataSchema
 
 SPEC_FP = Path(__file__).parents[1] / "src" / "MC_MED_MEDS" / "configs" / "event_configs.yaml"
 
-# vocabulary -> release -> code -> parent (None for a category). PMH//ICD10CM//S72.00XA is
+# vocabulary -> release -> code -> parent (None for a category). PMH//ICD//10CM//S72.00XA is
 # deliberately missing (it is not a valid ICD-10-CM code), so it must stay unenriched.
 PACKS = {
     "ICD10CM": (
@@ -209,16 +209,16 @@ def test_icd_codes_get_titles_and_parents(enriched_codes: pl.DataFrame):
     rows = {r["code"]: r for r in enriched_codes.to_dicts()}
 
     # No description from the ETL: the pack title fills it, and every added parent is named.
-    ed = rows["ED_DIAGNOSIS//ICD10CM//A00.0"]
+    ed = rows["ED_DIAGNOSIS//ICD//10CM//A00.0"]
     assert ed["description"] == title("ICD10CM", "A00.0")
     assert ed["parent_codes"] == ["ICD10CM//A00.0", "ICD10CM//A00"]
     assert parent_names(ed) == {
         "ICD10CM//A00.0": title("ICD10CM", "A00.0"),
         "ICD10CM//A00": title("ICD10CM", "A00"),
     }
-    assert rows["ED_DIAGNOSIS//ICD9CM//V01.1"]["description"] == title("ICD9CM", "V01.1")
-    assert rows["PMH//ICD9CM//401.9"]["description"] == title("ICD9CM", "401.9")  # empty Desc10
-    v45 = rows["PMH//ICD9CM//V45.81"]
+    assert rows["ED_DIAGNOSIS//ICD//9CM//V01.1"]["description"] == title("ICD9CM", "V01.1")
+    assert rows["PMH//ICD//9CM//401.9"]["description"] == title("ICD9CM", "401.9")  # empty Desc10
+    v45 = rows["PMH//ICD//9CM//V45.81"]
     assert v45["parent_codes"] == ["ICD9CM//V45.81", "ICD9CM//V45.8", "ICD9CM//V45"]
     assert parent_names(v45) == {
         "ICD9CM//V45.81": title("ICD9CM", "V45.81"),
@@ -228,7 +228,7 @@ def test_icd_codes_get_titles_and_parents(enriched_codes: pl.DataFrame):
 
     # A description from the ETL is kept; only the parents are added, so the official title of the
     # code itself is only in `parent_names`.
-    pmh = rows["PMH//ICD10CM//Z00.0"]
+    pmh = rows["PMH//ICD//10CM//Z00.0"]
     assert pmh["description"] == "Synthetic history A"
     assert pmh["parent_codes"] == ["ICD10CM//Z00.0", "ICD10CM//Z00"]
     assert parent_names(pmh) == {
@@ -237,7 +237,7 @@ def test_icd_codes_get_titles_and_parents(enriched_codes: pl.DataFrame):
     }
 
     # Codes that are not in the vocabulary, and non-ICD codes, are left alone.
-    for code in ("PMH//ICD10CM//S72.00XA", "ORDER//Lab//P1"):
+    for code in ("PMH//ICD//10CM//S72.00XA", "ORDER//Lab//P1"):
         assert not rows[code]["parent_codes"], code
         assert not parent_names(rows[code]), code
 

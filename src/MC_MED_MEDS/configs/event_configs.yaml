@@ -324,36 +324,36 @@ visits:
   # is kept as the first ICD-10 event's text_value rather than as a code description; the
   # official ICD titles come from suMEDS.
   ed_diagnosis_icd10_1:
-    code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^ *([^,]*[^, ])/ from $Dx_ICD10)'
+    code: '"ED_DIAGNOSIS//ICD//10CM//" + (extract group 1 of /^ *([^,]*[^, ])/ from $Dx_ICD10)'
     time: &diagnosis_time 'coalesce($Departure_time::?"%Y-%m-%dT%H:%M:%SZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Departure_time::?"%Y-%m-%dT%H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S", $Departure_time::?"%Y-%m-%d %H:%M:%S%.f", $Dispo_time::?"%Y-%m-%dT%H:%M:%SZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S%.fZ", $Dispo_time::?"%Y-%m-%dT%H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S", $Dispo_time::?"%Y-%m-%d %H:%M:%S%.f")'
     text_value: $Dx_name if len_chars($Dx_name) > 0
     hadm_id: $CSN
   ed_diagnosis_icd10_2:
-    code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $Dx_ICD10)'
+    code: '"ED_DIAGNOSIS//ICD//10CM//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $Dx_ICD10)'
     time: *diagnosis_time
     hadm_id: $CSN
   ed_diagnosis_icd10_3:
-    code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^(?:[^,]*,){2} *([^,]*[^, ])/ from $Dx_ICD10)'
+    code: '"ED_DIAGNOSIS//ICD//10CM//" + (extract group 1 of /^(?:[^,]*,){2} *([^,]*[^, ])/ from $Dx_ICD10)'
     time: *diagnosis_time
     hadm_id: $CSN
   ed_diagnosis_icd10_4:
-    code: '"ED_DIAGNOSIS//ICD10CM//" + (extract group 1 of /^(?:[^,]*,){3} *([^,]*[^, ])/ from $Dx_ICD10)'
+    code: '"ED_DIAGNOSIS//ICD//10CM//" + (extract group 1 of /^(?:[^,]*,){3} *([^,]*[^, ])/ from $Dx_ICD10)'
     time: *diagnosis_time
     hadm_id: $CSN
   ed_diagnosis_icd9_1:
-    code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^ *([^,]*[^, ])/ from $Dx_ICD9)'
+    code: '"ED_DIAGNOSIS//ICD//9CM//" + (extract group 1 of /^ *([^,]*[^, ])/ from $Dx_ICD9)'
     time: *diagnosis_time
     hadm_id: $CSN
   ed_diagnosis_icd9_2:
-    code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $Dx_ICD9)'
+    code: '"ED_DIAGNOSIS//ICD//9CM//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $Dx_ICD9)'
     time: *diagnosis_time
     hadm_id: $CSN
   ed_diagnosis_icd9_3:
-    code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^(?:[^,]*,){2} *([^,]*[^, ])/ from $Dx_ICD9)'
+    code: '"ED_DIAGNOSIS//ICD//9CM//" + (extract group 1 of /^(?:[^,]*,){2} *([^,]*[^, ])/ from $Dx_ICD9)'
     time: *diagnosis_time
     hadm_id: $CSN
   ed_diagnosis_icd9_4:
-    code: '"ED_DIAGNOSIS//ICD9CM//" + (extract group 1 of /^(?:[^,]*,){3} *([^,]*[^, ])/ from $Dx_ICD9)'
+    code: '"ED_DIAGNOSIS//ICD//9CM//" + (extract group 1 of /^(?:[^,]*,){3} *([^,]*[^, ])/ from $Dx_ICD9)'
     time: *diagnosis_time
     hadm_id: $CSN
 
@@ -514,12 +514,12 @@ numerics:
 # ------------------------------------------------------------------------------------------------
 # pmh.csv — past medical history diagnoses (MRN). pmh.csv writes ICD codes without the dot and
 # labels them `Dx10` / `Dx9`; the dot is restored (after the 3rd character, or the 4th for ICD-9
-# E codes) so past and ED diagnoses share one layout: Dx10 `E119` -> `PMH//ICD10CM//E11.9`.
+# E codes) so past and ED diagnoses share one layout: Dx10 `E119` -> `PMH//ICD//10CM//E11.9`.
 # ------------------------------------------------------------------------------------------------
 pmh:
   past_medical_history_icd10:
     code: >-
-      ("PMH//ICD10CM//" + $Code[:3] + ("." + $Code[3:] if len_chars($Code) > 3 else ""))
+      ("PMH//ICD//10CM//" + $Code[:3] + ("." + $Code[3:] if len_chars($Code) > 3 else ""))
       if $CodeType == "Dx10"
     time: &noted_time 'coalesce($Noted_date::?"%Y-%m-%d", $Noted_date::?"%Y-%m-%dT%H:%M:%SZ", $Noted_date::?"%Y-%m-%dT%H:%M:%S%.fZ", $Noted_date::?"%Y-%m-%dT%H:%M:%S", $Noted_date::?"%Y-%m-%d %H:%M:%S")'
     _metadata:
@@ -527,7 +527,7 @@ pmh:
         description: $Desc10 if len_chars($Desc10) > 0
   past_medical_history_icd9:
     code: >-
-      ("PMH//ICD9CM//" + (
+      ("PMH//ICD//9CM//" + (
       ($Code[:4] + ("." + $Code[4:] if len_chars($Code) > 4 else ""))
       if $Code[:1] == "E"
       else ($Code[:3] + ("." + $Code[3:] if len_chars($Code) > 3 else ""))
