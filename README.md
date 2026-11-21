@@ -318,7 +318,15 @@ template; run `uvx copier update` (with a clean git tree) to pull in template im
 
 ## Breaking changes
 
-### Unreleased (after 0.2.0)
+### 0.3.0 (2026-11-20)
+
+- Rebuilt on the full release; `tests/regression/full_summary_stats.json` regenerated.
+
+- **`unit` in `metadata/codes.parquet` is written in UCUM**, by suMEDS's `sumeds_normalize_units`
+  post-stage (`degC` becomes `Cel`, `mmHg` becomes `mm[Hg]`), and the new column `unit_source_value` keeps the spelling
+  the release records. A spelling suMEDS does not know is kept as it is. Codes and events are
+  unchanged; only the `unit` column of `codes.parquet` changes. To migrate, read
+  `unit_source_value` where you read `unit` before.
 
 - **ICD codes name the vocabulary and its edition apart, `ICD//<edition>//<code>`.** The ED and
   past-medical-history diagnoses were `ED_DIAGNOSIS//ICD10CM//<code>`, `ED_DIAGNOSIS//ICD9CM//<code>`,
