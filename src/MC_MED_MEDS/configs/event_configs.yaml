@@ -182,10 +182,21 @@ visits:
           f"Triage acuity, Emergency Severity Index (ESI) level: {$Triage_acuity if len_chars($Triage_acuity) > 0 else 'UNK'}
           (MC-MED visits.Triage_acuity; triage is placed at ED arrival)"
   # Chief complaints: one event per complaint (CC holds up to 8, joined by "," or ", ").
+  #
+  # MC-MED gives the complaints as free text with no vocabulary, so a complaint code is described
+  # by its own complaint text, exactly as written in the code (`TRIAGE//CHIEF_COMPLAINT//ABCESS` ->
+  # `ABCESS`). Only the first slot carries this `_metadata`. MEDS-Extract stamps each code with
+  # the `code:` string of the event that described it as `code_template`, and fails when one code
+  # gets two different templates. A complaint that is listed first in one visit and second in
+  # another would then get two, so describing every slot breaks the build. A complaint that is
+  # never listed first stays undescribed.
   triage_chief_complaint_1:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^ *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
     hadm_id: $CSN
+    _metadata:
+      _self:
+        description: "extract group 1 of /^ *([^,]*[^, ])/ from $CC"
   triage_chief_complaint_2:
     code: '"TRIAGE//CHIEF_COMPLAINT//" + (extract group 1 of /^(?:[^,]*,){1} *([^,]*[^, ])/ from $CC)'
     time: *arrival_time
