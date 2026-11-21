@@ -110,6 +110,27 @@ def test_multi_valued_fields_split_into_one_event_each(events: pl.DataFrame):
     )
 
 
+def test_chief_complaints_are_described_by_their_text(codes: pl.DataFrame):
+    """A complaint listed first in some visit is described by its own text, the code's last part.
+
+    COMPLAINT B is listed second in CSN 101 and first in CSN 102, so the build only succeeds
+    because the later slots carry no `_metadata` (MEDS-Extract allows one `code_template` per
+    code). COMPLAINT E is only ever listed second (CSN 401), so it stays undescribed.
+    """
+    complaint = "TRIAGE//CHIEF_COMPLAINT//"
+    rows = codes.filter(pl.col("code").str.starts_with(complaint))
+    description = dict(zip(rows["code"].to_list(), rows["description"].to_list()))
+    assert description == {
+        f"{complaint}COMPLAINT A": "COMPLAINT A",
+        f"{complaint}COMPLAINT B": "COMPLAINT B",
+        f"{complaint}COMPLAINT C": "COMPLAINT C",
+        f"{complaint}COMPLAINT D": "COMPLAINT D",
+        f"{complaint}COMPLAINT E": None,
+    }
+    described = rows.filter(pl.col("description").is_not_null())
+    assert (described["code"].str.split("//").list.last() == described["description"]).all()
+
+
 def test_diagnosis_name_is_event_text(events: pl.DataFrame):
     dx = events.filter((pl.col("hadm_id") == 101) & pl.col("code").str.starts_with("ED_DIAGNOSIS//"))
     text = dict(zip(dx["code"].to_list(), dx["text_value"].to_list()))

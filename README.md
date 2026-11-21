@@ -94,8 +94,11 @@ Code descriptions (order names, medication names, PMH descriptions) are written 
 restates it and names the MC-MED column it comes from, paraphrasing the column documentation on
 the [PhysioNet page](https://physionet.org/content/mc-med/1.0.1/). The exceptions are the
 slot-coded chief complaints and ED diagnoses (below): a code seen in two slots has two code
-templates, which MEDS-Extract's metadata stage rejects, so those events carry no metadata. ED
-diagnoses get their official ICD titles from suMEDS; chief complaints stay undescribed. A missing value in a categorical code component
+templates, which MEDS-Extract's metadata stage rejects, so only the first chief-complaint slot
+carries metadata and the ED diagnoses carry none. ED diagnoses get their official ICD titles from
+suMEDS. A chief complaint is described by its own text, the last part of its code
+(`TRIAGE//CHIEF_COMPLAINT//ABCESS` → `ABCESS`), when it is listed first in at least one visit;
+one that is never listed first stays undescribed (31 of 752 in the full release). A missing value in a categorical code component
 (race, ethnicity, arrival mode, payor, acuity, order type, unit, admit service, dispositions)
 becomes `UNK` rather than dropping the row. The CSVs write these as quoted empty strings (`""`),
 which the config treats the same as null. The lab unit in a code is stripped of surrounding
@@ -317,6 +320,14 @@ This repository was generated from the
 template; run `uvx copier update` (with a clean git tree) to pull in template improvements.
 
 ## Breaking changes
+
+### Unreleased
+
+- **Chief-complaint codes get a description in `codes.parquet`**
+  ([#23](https://github.com/rvandewater/MC_MED_MEDS/issues/23)): the complaint text, the last
+  part of the code (`TRIAGE//CHIEF_COMPLAINT//ABCESS` → `ABCESS`), for every complaint listed
+  first in at least one visit (721 of 752 in the full release). Those codes also gain a
+  `code_template`. Codes and events are unchanged, so nothing breaks and nothing needs migrating.
 
 ### 0.3.0 (2026-11-20)
 
