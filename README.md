@@ -321,7 +321,7 @@ template; run `uvx copier update` (with a clean git tree) to pull in template im
 
 ## Breaking changes
 
-### Unreleased
+### 0.4.0 (2026-11-27)
 
 - **Chief-complaint codes get a description in `codes.parquet`**
   ([#23](https://github.com/rvandewater/MC_MED_MEDS/issues/23)): the complaint text, the last
